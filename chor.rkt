@@ -4,11 +4,6 @@
 (require racket/date)
 (require redex)
 
-;; TODO: Environments should be sorted or normalized in some way so that
-;; isomorphic states can be collapsed.
-
-;; TODO: define-extended-judgment-form vs. define-overriding-judgment-form
-
 ;; TODO: Add tags. (pstore ...), (cstore ...), (chor ...), (inst ...), etc.?
 
 ;; TODO: Think about whether variable-not-otherwise-mentioned is actually
@@ -21,15 +16,19 @@
 
 ;;; Util
 
-(define (aput k v alist)
+(define (aput k v alist #:equal? [equal? equal?] #:less? [less? symbol<?])
   (define (rec k v alist res)
-    (cond
-      [(empty? alist)
+    (match alist
+      ['()
        (reverse (cons (cons k v) res))]
-      [(equal? (caar alist) k)
-       (append (reverse res) (cons (cons k v) (cdr alist)))]
-      [else
-       (rec k v (cdr alist) (cons (car alist) res))]))
+      [`(,(and c `(,k0 . ,_)) . ,tail)
+       (cond
+         [(equal? k k0)
+          (append (reverse res) (cons (cons k v) tail))]
+         [(less? k k0)
+          (append (reverse res) (list* (cons k v) c tail))]
+         [else
+          (rec k v tail (cons c res))])]))
   (rec k v alist '()))
 
 (define (set-disjoint? s1 s2)
