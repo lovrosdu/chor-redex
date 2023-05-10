@@ -1,0 +1,13 @@
+* About
+
+Models of several choreographic languages in PLT Redex.
+
+To play around, load the whole file and then eval the individual commented
+snippets that are interspersed throughout the file. You should have Racket
+installed of course.
+
+Some examples:
+
+[[./screenshot-1.png]]
+[[./screenshot-2.png]]
+[[./screenshot-3.png]]
