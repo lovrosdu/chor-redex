@@ -26,7 +26,7 @@
 
 ;;; Util
 
-(define (aput k v alist #:equal? [equal? equal?] #:less? [less? symbol<?])
+(define (aput k v alist #:equal? [equal? equal?] #:less? [less? <])
   (define (rec k v alist res)
     (match alist
       ['()
@@ -127,7 +127,7 @@
 (define (put-store k v store)
   (match store
     [`(,(and store (or 'cstore 'pstore)) . ,alist)
-     `(,store ,@(aput k (list v) alist))]))
+     `(,store ,@(aput k (list v) alist #:less? symbol<?))]))
 
 (define-metafunction StatefulChor
   st-get-var : σ x -> (boolean v)
@@ -240,8 +240,7 @@
 (define-metafunction/extension st-pn-i ConditionalChor
   cc-pn-i : I -> (p ...)
   [(cc-pn-i (if (p e) (chor I_1 ...) (chor I_2 ...)))
-   ,(cons (term p)
-          (apply append (term ((cc-pn-i I_1) ... (cc-pn-i I_2) ...))))])
+   ,(apply set-union (term ((p) (cc-pn-i I_1) ... (cc-pn-i I_2) ...)))])
 
 (define-overriding-judgment-form ConditionalChor st→
   #:mode (cc→ I O O)
