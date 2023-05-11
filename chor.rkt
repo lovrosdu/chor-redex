@@ -11,8 +11,8 @@
 ;; - cc -- Conditional Choreographies
 ;; - sl -- Selective Choreographies
 ;; - pn -- process names
-;; - pstore -- process store
 ;; - cstore -- choreographic store
+;; - pstore -- process store
 
 ;; * TODO
 ;;
@@ -69,11 +69,11 @@
 (define-judgment-form SimpleChor
   #:mode (sc→ I O O)
   #:contract (sc→ C μ C)
-  [---- com
+  [----------------------------------------------- com
    (sc→ (chor (p → q) I ...) (p → q) (chor I ...))]
   [(sc→ (chor I_1 ...) μ (chor I_2 ...))
    (side-condition ,(apply set-disjoint? (term ((sc-pn-i I) (sc-pn-μ μ)))))
-   ---- delay
+   ------------------------------------------------------------------------ delay
    (sc→ (chor I I_1 ...) μ (chor I I_2 ...))])
 
 ;; (judgment-holds (sc→ (chor (p → q) (r → s)) μ C) (μ C))
@@ -130,23 +130,23 @@
      `(,store ,@(aput k (list v) alist #:less? symbol<?))]))
 
 (define-metafunction StatefulChor
-  st-get-var : σ x -> (boolean v)
-  [(st-get-var σ x)
+  get-var : σ x -> (boolean v)
+  [(get-var σ x)
    (#t v)
    (where v ,(apply assoc-store (term (x σ))))]
-  [(st-get-var _ _) (#f 42)])
+  [(get-var _ _) (#f 42)])
 
 (define-judgment-form StatefulChor
   #:mode (↓ I I O)
   #:contract (↓ σ e v)
-  [---- val
+  [--------- val
    (↓ _ v v)]
-  [(where (#t v) (st-get-var σ x))
-   ---- var
+  [(where (#t v) (get-var σ x))
+   ---------------------------- var
    (↓ σ x v)]
   [(↓ σ e v)
    ...
-   ---- call
+   ------------------------------------------------------- call
    (↓ σ (f e ...) ,(apply (eval (term f)) (term (v ...))))])
 
 ;; (judgment-holds (↓ (pstore (a 2) (b 3)) (+ 2 5 a b) v) v)
@@ -158,14 +158,14 @@
 ;; (judgment-holds (↓ (pstore) x v) v)
 
 (define-metafunction StatefulChor
-  st-get-pstore : Σ p -> σ
-  [(st-get-pstore Σ p) ,(apply assoc-store (term (p Σ (pstore))))])
+  get-pstore : Σ p -> σ
+  [(get-pstore Σ p) ,(apply assoc-store (term (p Σ (pstore))))])
 
 (define-metafunction StatefulChor
-  st-put-var : Σ p x v -> Σ
-  [(st-put-var Σ p x v)
+  put-var : Σ p x v -> Σ
+  [(put-var Σ p x v)
    ,(apply put-store (term (p σ Σ)))
-   (where σ_1 (st-get-pstore Σ p))
+   (where σ_1 (get-pstore Σ p))
    (where σ ,(apply put-store (term (x v σ_1))))])
 
 (define-metafunction StatefulChor
@@ -181,19 +181,19 @@
 (define-judgment-form StatefulChor
   #:mode (st→ I O O)
   #:contract (st→ Conf μ Conf)
-  [(↓ (st-get-pstore Σ p) e v)
-   ---- local
+  [(↓ (get-pstore Σ p) e v)
+   ------------------------------------------- local
    (st→ (conf (chor (p x := e) I ...) Σ)
         (τ @ p)
-        (conf (chor I ...) (st-put-var Σ p x v)))]
-  [(↓ (st-get-pstore Σ p) e v)
-   ---- com
+        (conf (chor I ...) (put-var Σ p x v)))]
+  [(↓ (get-pstore Σ p) e v)
+   ------------------------------------------- com
    (st→ (conf (chor (p e → q x) I ...) Σ)
         (p v → q)
-        (conf (chor I ...) (st-put-var Σ q x v)))]
+        (conf (chor I ...) (put-var Σ q x v)))]
   [(st→ (conf (chor I_1 ...) Σ_1) μ (conf (chor I_2 ...) Σ_2))
    (side-condition ,(apply set-disjoint? (term ((st-pn-i I) (st-pn-μ μ)))))
-   ---- delay
+   ------------------------------------------------------------------------ delay
    (st→ (conf (chor I I_1 ...) Σ_1) μ (conf (chor I I_2 ...) Σ_2))])
 
 (define (catalogue title)
@@ -206,7 +206,7 @@
         (Seller (catalogue x) → Buyer price)))
 
 (define-term Σ5-6
-  (st-put-var (cstore) Buyer title "My Choreographies"))
+  (put-var (cstore) Buyer title "My Choreographies"))
 
 ;; (judgment-holds (st→ (conf C5-6 Σ5-6) μ (conf C Σ)) (C Σ μ))
 ;; (judgment-holds (st→ (conf (chor (r y := 4)) (cstore)) μ (conf C Σ)) (C Σ μ))
@@ -245,24 +245,24 @@
 (define-overriding-judgment-form ConditionalChor st→
   #:mode (cc→ I O O)
   #:contract (cc→ Conf μ Conf)
-  [(↓ (st-get-pstore Σ p) e #t)
-   ---- cond-then
+  [(↓ (get-pstore Σ p) e #t)
+   -------------------------------------------------------- cond-then
    (cc→ (conf (chor (if (p e) (chor I_1 ...) C_2) I ...) Σ)
         (τ @ p)
         (conf (chor I_1 ... I ...) Σ))]
-  [(↓ (st-get-pstore Σ p) e #f)
-   ---- cond-else
+  [(↓ (get-pstore Σ p) e #f)
+   ----------------------------------------------------------- cond-else
    (cc→ (conf (chor (if (p e) C_1 (chor I_2 ...)) I ...) Σ)
         (τ @ p)
         (conf (chor I_2 ... I ...) Σ))]
   [(cc→ (conf (chor I_1 ...) Σ_1) μ (conf (chor I_2 ...) Σ_2))
    (side-condition ,(apply set-disjoint? (term ((cc-pn-i I) (st-pn-μ μ)))))
-   ---- delay
+   ------------------------------------------------------------------------ delay
    (cc→ (conf (chor I I_1 ...) Σ_1) μ (conf (chor I I_2 ...) Σ_2))]
   [(cc→ (conf C_1 Σ_1) μ (conf C_2 Σ_2))
    (cc→ (conf C_3 Σ_1) μ (conf C_4 Σ_2))
    (side-condition ,(apply set-disjoint? (term ((p) (st-pn-μ μ)))))
-   ---- delay-cond
+   ---------------------------------------------------------------- delay-cond
    (cc→ (conf (chor (if (p e) C_1 C_3) I ...) Σ_1)
         μ
         (conf (chor (if (p e) C_2 C_4) I ...) Σ_2))])
@@ -274,7 +274,7 @@
             (chor (q y := #t)))))
 
 (define-term Σ6-2
-  (st-put-var (st-put-var (cstore) p x 5) q y #t))
+  (put-var (put-var (cstore) p x 5) q y #t))
 
 ;; (judgment-holds (cc→ (conf C6-2 Σ6-2) μ (conf C Σ)) (C Σ μ))
 ;; (show-derivations (build-derivations (cc→ (conf C6-2 Σ6-2) μ (conf C Σ))))
@@ -314,13 +314,13 @@
 (define-overriding-judgment-form SelectiveChor cc→
   #:mode (sl→ I O O)
   #:contract (sl→ Conf μ Conf)
-  [---- sel
+  [-------------------------------------- sel
    (sl→ (conf (chor (p → q [l]) I ...) Σ)
         (p → q [l])
         (conf (chor I ...) Σ))]
   [(sl→ (conf (chor I_1 ...) Σ_1) μ (conf (chor I_2 ...) Σ_2))
    (side-condition ,(apply set-disjoint? (term ((sl-pn-i I) (sl-pn-μ μ)))))
-   ---- delay
+   ------------------------------------------------------------------------ delay
    (sl→ (conf (chor I I_1 ...) Σ_1) μ (conf (chor I I_2 ...) Σ_2))])
 
 (define (timestamp)
@@ -336,7 +336,7 @@
             (chor (Buyer → Seller [ko])))))
 
 (define-term Σ6-16
-  (st-put-var (st-put-var (cstore) Buyer title "My Choreographies")
+  (put-var (put-var (cstore) Buyer title "My Choreographies")
               Buyer address "Internet Street"))
 
 ;; (judgment-holds (sl→ (conf C6-16 Σ6-16) μ (conf C Σ)) (C Σ μ))
