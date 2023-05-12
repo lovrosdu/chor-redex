@@ -44,6 +44,10 @@
 (define (set-disjoint? s1 s2)
   (empty? (set-intersect s1 s2)))
 
+(define (applify proc)
+  (lambda (args)
+    (apply proc args)))
+
 ;;; SimpleChor
 
 (define-language SimpleChor
@@ -100,7 +104,7 @@
 
 (define-extended-language StatefulChor SimpleChor
   ;; Expressions
-  (v ::= boolean natural string)
+  (v ::= any)
   (x ::= id)
   (f ::= id)
   (e ::= v x (f e ...))
@@ -133,21 +137,30 @@
   get-var : σ x -> (boolean v)
   [(get-var σ x)
    (#t v)
-   (where v ,(apply assoc-store (term (x σ))))]
+   (where v ,(apply assoc-store (term (x σ))))
+   (side-condition (not (equal? (term v) (void))))]
   [(get-var _ _) (#f 42)])
+
+(define (eval-safe f args)
+  (with-handlers ([exn:fail? (lambda (v)
+                               ((error-display-handler) (exn-message v) v)
+                               (list #f 42))])
+    (list #t (apply (eval f) args))))
 
 (define-judgment-form StatefulChor
   #:mode (↓ I I O)
   #:contract (↓ σ e v)
-  [--------- val
+  [(side-condition ,(not (or (symbol? (term v)) (list? (term v)))))
+   ---------------------------------------------------------------- val
    (↓ _ v v)]
   [(where (#t v) (get-var σ x))
    ---------------------------- var
    (↓ σ x v)]
   [(↓ σ e v)
    ...
-   ------------------------------------------------------- call
-   (↓ σ (f e ...) ,(apply (eval (term f)) (term (v ...))))])
+   (where (#t v_1) ,(apply eval-safe (term (f (v ...)))))
+   ------------------------------------------------------ call
+   (↓ σ (f e ...) v_1)])
 
 ;; (judgment-holds (↓ (pstore (a 2) (b 3)) (+ 2 5 a b) v) v)
 ;; (show-derivations (build-derivations (↓ (pstore (a 2) (b 3)) (+ 2 5 a b) v)))
@@ -321,7 +334,14 @@
   [(sl→ (conf (chor I_1 ...) Σ_1) μ (conf (chor I_2 ...) Σ_2))
    (side-condition ,(apply set-disjoint? (term ((sl-pn-i I) (sl-pn-μ μ)))))
    ------------------------------------------------------------------------ delay
-   (sl→ (conf (chor I I_1 ...) Σ_1) μ (conf (chor I I_2 ...) Σ_2))])
+   (sl→ (conf (chor I I_1 ...) Σ_1) μ (conf (chor I I_2 ...) Σ_2))]
+  [(sl→ (conf C_1 Σ_1) μ (conf C_2 Σ_2))
+   (sl→ (conf C_3 Σ_1) μ (conf C_4 Σ_2))
+   (side-condition ,(apply set-disjoint? (term ((p) (sl-pn-μ μ)))))
+   ---------------------------------------------------------------- delay-cond
+   (sl→ (conf (chor (if (p e) C_1 C_3) I ...) Σ_1)
+        μ
+        (conf (chor (if (p e) C_2 C_4) I ...) Σ_2))])
 
 (define (timestamp)
   (date->string (current-date)))
@@ -341,6 +361,15 @@
 
 ;; (judgment-holds (sl→ (conf C6-16 Σ6-16) μ (conf C Σ)) (C Σ μ))
 ;; (show-derivations (build-derivations (sl→ (conf C6-16 Σ6-16) μ (conf C Σ))))
+;; (show-derivations
+;;  (build-derivations
+;;   (sl→ (conf (chor (if (p e)
+;;                        (chor (q → r [ok])
+;;                              (q x := 4))
+;;                        (chor (q → r [ok])
+;;                              (r x := 5))))
+;;              (cstore))
+;;        μ (conf C Σ))))
 
 (define-metafunction/extension st-format-μ SelectiveChor
   sl-format-μ : μ -> string
