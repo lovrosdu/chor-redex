@@ -1,30 +1,40 @@
 #lang racket
 
+(require math)
 (require racket/set)
 (require racket/date)
 (require redex)
 
 ;; * Abbreviations
 ;;
-;; - chor -- choreography
-;; - cstore -- choreographic store
-;; - pstore -- process store
-;; - dstore -- set of definitions (procedures)
-;; - conf -- configuration
+;; - "chor" -- choreography
+;; - "cstore" -- choreographic store
+;; - "pstore" -- process store
+;; - "dstore" -- set of definitions (procedures)
+;; - "def" -- definition (procedure)
+;; - "conf" -- configuration
 ;;
-;; - sc -- Simple Choreographies
-;; - st -- Stateful Choreographies
-;; - cc -- Conditional Choreographies
-;; - sl -- Selective Choreographies
-;; - rc -- Recursive Choreographies
+;; - "sc" -- Simple Choreographies
+;; - "st" -- Stateful Choreographies
+;; - "cc" -- Conditional Choreographies
+;; - "sl" -- Selective Choreographies
+;; - "rc" -- Recursive Choreographies
 ;;
-;; - wf -- well-formed
-;; - pn -- process names
-;; - p -- process
-;; - i -- instruction
-;; - c -- choreography
-;; - d -- definition
-;; - f -- configuration
+;; - "proc" -- process
+;; - "net" -- network
+;;
+;; - "sp" -- Simple Processes
+;; - "stp" -- Stateful Processes
+;; - "cp" -- Conditional Processes
+;; - "slp" -- Selective Processes
+;;
+;; - "wf" -- well-formed
+;; - "pn" -- process names
+;; - suffix "p" -- process
+;; - suffix "i" -- instruction
+;; - suffix "c" -- choreography
+;; - suffix "d" -- definition
+;; - suffix "f" -- configuration
 
 ;; * TODO
 ;;
@@ -33,6 +43,30 @@
 ;; - Chapter 10.
 ;;
 ;; - Well-formedness for the runtime term.
+;;
+;; - Document the necessary safe-eval. Use the file transfer choreography as an
+;;   example.
+;;
+;; - Add `r` as another role non-terminal to the chor languages to simplify
+;;   things.
+;;
+;; - Document sorting behavior.
+;;
+;; - Implement variadic versions of the "put" metafunctions for convenience.
+;;
+;; - Use more uniform names -- "st" vs. "stp" should probably be "stc" vs.
+;;   "stp".
+;;
+;; - Give up some contract power and generalize the judgment forms and
+;;   metafunctions so that they work for any model. This will reduce duplication
+;;   and probably improve readability a lot.
+;;
+;; - Document representation of choreographies, processes and stores -- they're
+;;   just tagged (a)lists.
+;;
+;; - Pull out expression language into a common thing.
+;;
+;; - Rename "dstore" to "defs"?
 
 ;;; Util
 
@@ -113,6 +147,135 @@
 ;; (traces SimpleChor-> (term (chor (p → q) (r → q))))
 ;; (traces SimpleChor-> (term (chor (p → q) (r → s))))
 
+;;; SimpleProc
+
+(define-language SimpleProc
+  (id ::= variable-not-otherwise-mentioned)
+  ;; Processes
+  (p q r ::= id)
+  (I ::=
+     (p !)
+     (p ?))
+  (P Q R ::= (proc I ...))
+  ;; Networks
+  (M N ::= (net (p P) ...))
+  ;; Transitions
+  (μ ::= (p → q)))
+
+(define-metafunction SimpleProc
+  sp-put-proc : N p P -> N
+  [(sp-put-proc N p P) ,(apply put-store (term (p P N)))])
+
+;; (define-metafunction SimpleProc
+;;   sp-put-procs : N (p P) ... -> N
+;;   [(sp-put-procs N) N]
+;;   [(sp-put-procs N (p P) (q Q) ...)
+;;    (sp-put-procs ,(apply put-store (term (p P N))) (q Q) ...)])
+
+;; (define-judgment-form SimpleProc
+;;   #:mode (sp-pick I O O O)
+;;   #:contract (sp-pick N (p P) (p P) ((p P) ...))
+;;   [-------------------------------------------------------------------- pick
+;;    (sp-pick (net (r_1 R_1) ... (p P) (r_2 R_2) ... (q Q) (r_3 R_3) ...)
+;;             (p P) (q Q) ((r_1 R_1) ... (r_2 R_2) ... (r_3 R_3) ...))])
+
+(define-judgment-form SimpleProc
+  #:mode (sp-commute I O)
+  #:contract (sp-commute N N)
+  [------------------------------------------------ id
+   (sp-commute (net (p P) (q Q)) (net (p P) (q Q)))]
+  [------------------------------------------------ commute
+   (sp-commute (net (p P) (q Q)) (net (q Q) (p P)))])
+
+(define-judgment-form SimpleProc
+  #:mode (sp-split I O O)
+  #:contract (sp-split N M M)
+  [---------------------------------------- done-left
+   (sp-split (net (p P)) (net (p P)) (net))]
+  [---------------------------------------- done-right
+   (sp-split (net (p P)) (net) (net (p P)))]
+  [(sp-split (net (q Q) ...) (net (r_1 R_1) ...) (net (r_2 R_2) ...))
+   ------------------------------------------------------------------------------ left
+   (sp-split (net (p P) (q Q) ...) (net (p P) (r_1 R_1) ...) (net (r_2 R_2) ...))]
+  [(sp-split (net (q Q) ...) (net (r_1 R_1) ...) (net (r_2 R_2) ...))
+   ------------------------------------------------------------------------------ right
+   (sp-split (net (p P) (q Q) ...) (net (r_1 R_1) ...) (net (p P) (r_2 R_2) ...))])
+
+(define-metafunction SimpleProc
+  sp-join : N N -> N
+  [(sp-join (net) N) N]
+  [(sp-join N (net)) N]
+  [(sp-join (net (p P) (p_1 P_1) ...) (net (q Q) (q_1 Q_1) ...))
+   (net (p P) (r R) ...)
+   (side-condition (symbol<? (term p) (term q)))
+   (where (net (r R) ...)
+          (sp-join (net (p_1 P_1) ...) (net (q Q) (q_1 Q_1) ...)))]
+  [(sp-join (net (p P) (p_1 P_1) ...) (net (q Q) (q_1 Q_1) ...))
+   (net (q Q) (r R) ...)
+   (side-condition (symbol<? (term q) (term p)))
+   (where (net (r R) ...)
+          (sp-join (net (p P) (p_1 P_1) ...) (net (q_1 Q_1) ...)))])
+
+(define-judgment-form SimpleProc
+  #:mode (sp→ I O O)
+  #:contract (sp→ N μ N)
+  [(sp-commute N (net (p (proc (q !) I_1 ...)) (q (proc (p ?) I_2 ...))))
+   ----------------------------------------------------------------------------------- com
+   (sp→ N (p → q) (sp-put-proc (sp-put-proc (net) p (proc I_1 ...)) q (proc I_2 ...)))]
+  [(sp-split N M_1 M_2)
+   (where (net _ _ ...) M_1)
+   (where (net _ _ ...) M_2)
+   (sp→ M_1 μ M_3)
+   --------------------------- par
+   (sp→ N μ (sp-join M_2 M_3))])
+
+(define-term N3-1
+  (net (Client (proc (Gateway !)))
+       (Gateway (proc (Client ?) (Server !)))
+       (Server (proc (Gateway ?)))))
+
+;; (judgment-holds (sp-pick (net) any_1 any_2 any_3) (any_1 any_2 any_3))
+;; (judgment-holds (sp-split (net) M_1 M_2) (M_1 M_2))
+;; (judgment-holds (sp→ (net) μ N) (μ N))
+
+;; (judgment-holds (sp-pick (net (p (proc (q !)))) any_1 any_2 any_3) (any_1 any_2 any_3))
+;; (judgment-holds (sp-split (net (p (proc (q !)))) M_1 M_2) (M_1 M_2))
+;; (judgment-holds (sp→ (net (p (proc (q !)))) μ N) (μ N))
+
+;; (judgment-holds (sp-pick (net (p (proc (q !))) (q (proc (p ?)))) any_1 any_2 any_3) (any_1 any_2 any_3))
+;; (judgment-holds (sp-split (net (p (proc (q !))) (q (proc (p ?)))) M_1 M_2) (M_1 M_2))
+;; (judgment-holds (sp→ (net (p (proc (q !))) (q (proc (p ?)))) μ M) (μ M))
+
+;; (judgment-holds (sp-pick N3-1 any_1 any_2 any_3) (any_1 any_2 any_3))
+;; (judgment-holds (sp-split N3-1 M_1 M_2) (M_1 M_2))
+;; (judgment-holds (sp→ N3-1 μ M) (μ M))
+;; (show-derivations (build-derivations (sp→ N3-1 μ M)))
+
+(define-metafunction SimpleProc
+  sp-format-μ : μ -> string
+  [(sp-format-μ (p → q)) ,(apply format "~a → ~a" (term (p q)))])
+
+(define SimpleProc->
+  (reduction-relation
+   SimpleProc
+   #:domain N
+   (--> N_1 N_2
+        (judgment-holds (sp→ N_1 μ N_2))
+        (computed-name (term (sp-format-μ μ))))))
+
+;; (traces SimpleProc-> (term N3-1))
+;; (stepper SimpleProc-> (term N3-1))
+
+;;; Expressions
+
+;; (define-language Expr
+;;   (id ::= variable-not-otherwise-mentioned)
+;;   (v ::= any)
+;;   (x ::= id)
+;;   (f ::= id)
+;;   (e ::= v x (f e ...))
+;;   (σ ::= (pstore (x v) ...)))
+
 ;;; StatefulChor
 
 (define-extended-language StatefulChor SimpleChor
@@ -137,13 +300,13 @@
 
 (define (assoc-store k store [default (void)])
   (match store
-    [`(,(or 'cstore 'pstore 'dstore) . ,alist)
+    [`(,(or 'cstore 'pstore 'dstore 'net) . ,alist)
      (let ([v (assoc k alist)])
        (if v (second v) default))]))
 
 (define (put-store k v store)
   (match store
-    [`(,(and store (or 'cstore 'pstore 'dstore)) . ,alist)
+    [`(,(and store (or 'cstore 'pstore 'dstore 'net)) . ,alist)
      `(,store ,@(aput k (list v) alist #:less? symbol<?))]))
 
 (define-metafunction StatefulChor
@@ -255,6 +418,113 @@
 ;; (traces StatefulChor-> (term (conf C5-6 Σ5-6)))
 ;; (traces StatefulChor-> (term (conf (chor (p 5 → q x) (r y := 4)) (cstore))))
 
+;;; StatefulProc
+
+(define-extended-language StatefulProc SimpleProc
+  ;; Expressions
+  (v ::= any)
+  (x ::= id)
+  (f ::= id)
+  (e ::= v x (f e ...))
+  ;; Stores
+  (σ ::= (pstore (x v) ...))
+  (Σ ::= (cstore (p σ) ...))
+  ;; Processes
+  (I ::=
+     (p ! e)
+     (p ? x)
+     (x := e))
+  ;; Transitions
+  (μ ::=
+     (p v → q)
+     (τ @ p))
+  ;; Configurations
+  (Conf ::= (conf N Σ)))
+
+(define-metafunction/extension sp-put-proc StatefulProc
+  stp-put-proc : N p P -> N)
+
+;; (define-overriding-judgment-form StatefulProc sp-pick
+;;   #:mode (stp-pick I O O O)
+;;   #:contract (stp-pick N (p P) (p P) ((p P) ...)))
+
+(define-overriding-judgment-form StatefulProc sp-commute
+  #:mode (stp-commute I O)
+  #:contract (stp-commute N N))
+
+(define-overriding-judgment-form StatefulProc sp-split
+  #:mode (stp-split I O O)
+  #:contract (stp-split N N N))
+
+(define-metafunction/extension sp-join StatefulProc
+  stp-join : N N -> N)
+
+(define-judgment-form StatefulProc
+  #:mode (stp→ I O O)
+  #:contract (stp→ Conf μ Conf)
+  [(↓ (get-pstore Σ p) e v)
+   ------------------------------------------------------ local
+   (stp→ (conf (net (p (proc (x := e) I ...))) Σ)
+         (τ @ p)
+         (conf (net (p (proc I ...))) (put-var Σ p x v)))]
+  [(stp-commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
+   (↓ (get-pstore Σ p) e v)
+   ---------------------------------------------------------------------------- com
+   (stp→ (conf N Σ)
+         (p v → q)
+         (conf
+          (stp-put-proc (stp-put-proc (net) p (proc I_1 ...)) q (proc I_2 ...))
+          (put-var Σ q x v)))]
+  [(stp-split N M_1 M_2)
+   (where (net _ _ ...) M_1)
+   (where (net _ _ ...) M_2)
+   (stp→ (conf M_1 Σ_1) μ (conf M_3 Σ_2))
+   --------------------------------------------------- par
+   (stp→ (conf N Σ_1) μ (conf (stp-join M_2 M_3) Σ_2))])
+
+;; (judgment-holds (stp→ (conf (stp-put-proc (net) p (proc (x := 6))) (cstore)) μ Conf) (μ Conf))
+
+(define-term N-ex-5-6
+  (stp-put-proc (stp-put-proc (net) Buyer (proc (Seller ! title) (Seller ? price)))
+                Seller (proc (Buyer ? x) (Buyer ! (catalogue x)))))
+
+;; (judgment-holds (stp→ (conf N-ex-5-6 (put-var (cstore) Buyer title "My Choreographies")) μ Conf) (μ Conf))
+
+(define modpow modular-expt)
+
+(define-term N-ex-5-7
+  (stp-put-proc (stp-put-proc (net) Alice (proc (Bob ! (modpow g a p))
+                                                (Bob ? y)
+                                                (s := (modpow y a p))))
+                Bob (proc (Alice ? x)
+                          (Alice ! (modpow g b p))
+                          (s := (modpow x b p)))))
+
+(define-term Σ-ex-5-7
+  (put-var (put-var (put-var (put-var (put-var (put-var (cstore) Alice p 23) Alice g 5)
+                                      Alice a ,(random 10))
+                             Bob p 23)
+                    Bob g 5)
+           Bob b ,(random 10)))
+
+;; (judgment-holds (stp→ (conf N-ex-5-7 Σ-ex-5-7) μ Conf) (μ Conf))
+
+(define-metafunction StatefulProc
+  stp-format-μ : μ -> string
+  [(stp-format-μ (p v → q)) ,(apply format "~a.~s → ~a" (term (p v q)))]
+  [(stp-format-μ (τ @ p)) ,(apply format "τ@~a" (term (p)))])
+
+(define StatefulProc->
+  (reduction-relation
+   StatefulProc
+   #:domain Conf
+   (--> Conf_1 Conf_2
+        (judgment-holds (stp→ Conf_1 μ Conf_2))
+        (computed-name (term (stp-format-μ μ))))))
+
+;; (traces StatefulProc-> (term (conf N-ex-5-6 (put-var (cstore) Buyer title "My Choreographies"))))
+;; (traces StatefulProc-> (term (conf N-ex-5-7 Σ-ex-5-7)))
+
 ;;; ConditionalChor
 
 (define-extended-language ConditionalChor StatefulChor
@@ -315,6 +585,78 @@
 
 ;; (traces ConditionalChor-> (term (conf C6-2 Σ6-2)))
 
+;;; ConditionalProc
+
+(define-extended-language ConditionalProc StatefulProc
+  ;; Processes
+  (I ::=
+     ....
+     (if e P Q)))
+
+(define-metafunction/extension stp-put-proc ConditionalProc
+  cp-put-proc : N p P -> N)
+
+(define-overriding-judgment-form ConditionalProc stp-commute
+  #:mode (cp-commute I O)
+  #:contract (cp-commute N N))
+
+(define-overriding-judgment-form ConditionalProc stp-split
+  #:mode (cp-split I O O)
+  #:contract (cp-split N N N))
+
+(define-metafunction/extension stp-join ConditionalProc
+  cp-join : N N -> N)
+
+(define-overriding-judgment-form ConditionalProc stp→
+  #:mode (cp→ I O O)
+  #:contract (cp→ Conf μ Conf)
+  [(cp-commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
+   (↓ (get-pstore Σ p) e v)
+   -------------------------------------------------------------------------- com
+   (cp→ (conf N Σ)
+        (p v → q)
+        (conf
+         (cp-put-proc (cp-put-proc (net) p (proc I_1 ...)) q (proc I_2 ...))
+         (put-var Σ q x v)))]
+  [(↓ (get-pstore Σ p) e #t)
+   ------------------------------------------------------------ cond-then
+   (cp→ (conf (net (p (proc (if e (proc I_1 ...) P) I ...))) Σ)
+        (τ @ p)
+        (conf (net (p (proc I_1 ... I ...))) Σ))]
+  [(↓ (get-pstore Σ p) e #f)
+   ------------------------------------------------------------ cond-else
+   (cp→ (conf (net (p (proc (if e P (proc I_1 ...)) I ...))) Σ)
+        (τ @ p)
+        (conf (net (p (proc I_1 ... I ...))) Σ))]
+  [(cp-split N M_1 M_2)
+   (where (net _ _ ...) M_1)
+   (where (net _ _ ...) M_2)
+   (cp→ (conf M_1 Σ_1) μ (conf M_3 Σ_2))
+   ------------------------------------------------- par
+   (cp→ (conf N Σ_1) μ (conf (cp-join M_2 M_3) Σ_2))])
+
+(define-term N-ex-6-7
+  (cp-put-proc (cp-put-proc (cp-put-proc (net) p (proc (if (< x 10)
+                                                           (proc (x := (+ x 1)))
+                                                           (proc))))
+                            q (proc (y := #t) (r ! y)))
+               r (proc (q ? z))))
+
+(define-term Σ-ex-6-7
+  (put-var (cstore) p x 7))
+
+;; (judgment-holds (cp→ (conf N-ex-6-7 Σ-ex-6-7) μ Conf) (μ Conf))
+
+(define ConditionalProc->
+  (reduction-relation
+   ConditionalProc
+   #:domain Conf
+   (--> Conf_1 Conf_2
+        (judgment-holds (cp→ Conf_1 μ Conf_2))
+        (computed-name (term (stp-format-μ μ))))))
+
+;; (traces ConditionalProc-> (term (conf N-ex-6-7 Σ-ex-6-7)))
+
 ;;; SelectiveChor
 
 (define-extended-language SelectiveChor ConditionalChor
@@ -368,12 +710,12 @@
                   (Seller (format "~a: ~a" y (timestamp)) → Buyer date))
             (chor (Buyer → Seller [ko])))))
 
-(define-term Σ6-16
+(define-term Σ-ex-6-14
   (put-var (put-var (cstore) Buyer title "My Choreographies")
               Buyer address "Internet Street"))
 
-;; (judgment-holds (sl→ (conf C6-16 Σ6-16) μ (conf C Σ)) (C Σ μ))
-;; (show-derivations (build-derivations (sl→ (conf C6-16 Σ6-16) μ (conf C Σ))))
+;; (judgment-holds (sl→ (conf C6-16 Σ-ex-6-14) μ (conf C Σ)) (C Σ μ))
+;; (show-derivations (build-derivations (sl→ (conf C6-16 Σ-ex-6-14) μ (conf C Σ))))
 ;; (show-derivations
 ;;  (build-derivations
 ;;   (sl→ (conf (chor (if (p e)
@@ -396,8 +738,108 @@
         (judgment-holds (sl→ Conf_1 μ Conf_2))
         (computed-name (term (sl-format-μ μ))))))
 
-;; (traces SelectiveChor-> (term (conf C6-16 Σ6-16)))
+;; (traces SelectiveChor-> (term (conf C6-16 Σ-ex-6-14)))
 ;; (traces SelectiveChor-> (term (conf (chor (p → q [ok])) (cstore))))
+
+;;; SelectiveProc
+
+(define-extended-language SelectiveProc ConditionalProc
+  ;; Labels
+  (l ::= id)
+  ;; Processes
+  (I ::=
+     ....
+     (p ⊕ l)
+     (p & (l P) ...))
+  ;; Transitions
+  (μ ::=
+     ....
+     (p → q [l])))
+
+(define-metafunction/extension cp-put-proc SelectiveProc
+  slp-put-proc : N p P -> N)
+
+(define-overriding-judgment-form SelectiveProc cp-commute
+  #:mode (slp-commute I O)
+  #:contract (slp-commute N N))
+
+(define-overriding-judgment-form SelectiveProc cp-split
+  #:mode (slp-split I O O)
+  #:contract (slp-split N N N))
+
+(define-metafunction/extension cp-join SelectiveProc
+  slp-join : N N -> N)
+
+(define-overriding-judgment-form SelectiveProc cp→
+  #:mode (slp→ I O O)
+  #:contract (slp→ Conf μ Conf)
+  [(slp-commute N (net (p (proc (q ⊕ l) I_1 ...))
+                       (q (proc (p & (l_1 P_1) ...) I_2 ...))))
+   (where (_ ... (l (proc I_3 ...)) _ ...) ((l_1 P_1) ...))
+   ------------------------------------------------------------------- sel
+   (slp→ (conf N Σ)
+         (p → q [l])
+         (conf (slp-put-proc
+                (slp-put-proc
+                 (net) p (proc I_1 ...)) q (proc I_3 ... I_2 ...)) Σ))]
+  [(slp-commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
+   (↓ (get-pstore Σ p) e v)
+   ---------------------------------------------------------------------------- com
+   (slp→ (conf N Σ)
+         (p v → q)
+         (conf
+          (slp-put-proc (slp-put-proc (net) p (proc I_1 ...)) q (proc I_2 ...))
+          (put-var Σ q x v)))]
+  [(slp-split N M_1 M_2)
+   (where (net _ _ ...) M_1)
+   (where (net _ _ ...) M_2)
+   (slp→ (conf M_1 Σ_1) μ (conf M_3 Σ_2))
+   --------------------------------------------------- par
+   (slp→ (conf N Σ_1) μ (conf (slp-join M_2 M_3) Σ_2))])
+
+(define (valid-creds? creds)
+  (equal? creds "secret"))
+
+(define (new-token)
+  "totally-unique-token")
+
+(define-term N-ex-6-15
+  (slp-put-proc (slp-put-proc (slp-put-proc (net) c (proc (cas ! creds)
+                                                          (s &
+                                                             (token (proc (s ? t)))
+                                                             (error (proc)))))
+                              s (proc (cas &
+                                           (ok (proc (c ⊕ token)
+                                                     (c ! (new-token))))
+                                           (ko (proc (c ⊕ error))))))
+                cas (proc (c ? x)
+                          (if (valid-creds? x)
+                              (proc (s ⊕ ok))
+                              (proc (s ⊕ ko))))))
+
+(define-term Σ-ex-6-17-1
+  (put-var (cstore) c creds "secret"))
+
+(define-term Σ-ex-6-17-2
+  (put-var (cstore) c creds "wrong"))
+
+;; (judgment-holds (slp→ (conf N-ex-6-15 Σ-ex-6-17-1) μ Conf) (μ Conf))
+;; (show-derivations (build-derivations (slp→ (conf N-ex-6-15 Σ-ex-6-17-1) μ Conf)))
+
+(define-metafunction/extension stp-format-μ SelectiveChor
+  slp-format-μ : μ -> string
+  [(slp-format-μ (p → q [l])) ,(apply format "~a → ~a [~a]" (term (p q l)))])
+
+(define SelectiveProc->
+  (reduction-relation
+   SelectiveProc
+   #:domain Conf
+   (--> Conf_1 Conf_2
+        (judgment-holds (slp→ Conf_1 μ Conf_2))
+        (computed-name (term (slp-format-μ μ))))))
+
+;; (traces SelectiveProc-> (term (conf N-ex-6-15 Σ-ex-6-17-1)))
+;; (traces SelectiveProc-> (term (conf N-ex-6-15 Σ-ex-6-17-2)))
 
 ;;; RecursiveChor
 
@@ -621,3 +1063,137 @@
 ;; (judgment-holds (rc-wf-d D-ping any) any)
 ;; (judgment-holds (rc-wf-d (dstore (X ((p) (chor (p x := e))))) any) any)
 ;; (judgment-holds (rc-wf-f (conf C-ping (cstore) D-ping) any) any)
+
+;;; RecursiveProc
+
+(define-extended-language RecursiveProc SelectiveProc
+  ;; Definitions
+  (X ::= id)
+  (D ::= (dstore (X ((p ...) P)) ...))
+  ;; Processes
+  (I ::=
+     ....
+     (X p ...))
+  ;; Configurations
+  (Conf ::= (conf N Σ D)))
+
+(define-metafunction/extension slp-put-proc RecursiveProc
+  rcp-put-proc : N p P -> N)
+
+(define-overriding-judgment-form RecursiveProc slp-commute
+  #:mode (rcp-commute I O)
+  #:contract (rcp-commute N N))
+
+(define-overriding-judgment-form RecursiveProc slp-split
+  #:mode (rcp-split I O O)
+  #:contract (rcp-split N N N))
+
+(define-metafunction/extension slp-join RecursiveProc
+  rcp-join : N N -> N)
+
+(define-metafunction RecursiveProc
+  rcp-subst-i : I (p p) ... -> I
+  [(rcp-subst-i (p ! e) (p_1 q_1) ...)
+   ((subst-p p (p_1 q_1) ...) ! e)]
+  [(rcp-subst-i (p ? x) (p_1 q_1) ...)
+   ((subst-p p (p_1 q_1) ...) ? x)]
+  [(rcp-subst-i (x := e) _ ...)
+   (x := e)]
+  [(rcp-subst-i (if e (proc I_1 ...) (proc I_2 ...)) (p_1 q_1) ...)
+   (if e
+       (proc (rcp-subst-i I_1 (p_1 q_1) ...) ...)
+       (proc (rcp-subst-i I_2 (p_1 q_1) ...) ...))]
+  [(rcp-subst-i (p ⊕ l) (p_1 q_1) ...)
+   ((subst-p p (p_1 q_1) ...) ⊕ l)]
+  [(rcp-subst-i (p & (l (proc I ...)) ...) (p_1 q_1) ...)
+   ((subst-p p (p_1 q_1) ...) & (l (proc (rcp-subst-i I (p_1 q_1)) ...)) ...)]
+  [(rcp-subst-i (X p ...) (p_1 q_1) ...)
+   (X (subst-p p (p_1 q_1) ...) ...)])
+
+(define-metafunction RecursiveProc
+  rcp-get-def : D X -> ((p ...) P)
+  [(rcp-get-def D X) ,(apply assoc-store (term (X D)))])
+
+(define-metafunction RecursiveProc
+  rcp-put-def : D (X p ...) P -> D
+  [(rcp-put-def D (X p ...) P) ,(apply put-store (term (X ((p ...) P) D)))])
+
+(define-overriding-judgment-form RecursiveProc slp→
+  #:mode (rcp→ I O O)
+  #:contract (rcp→ Conf μ Conf)
+  ;; [(slp→ (conf N_1 Σ_1) μ (conf N_2 Σ_2))
+  ;;  ------------------------------------------ inherit
+  ;;  (rcp→ (conf N_1 Σ_1 D) μ (conf N_2 Σ_2 D))]
+  [(↓ (get-pstore Σ p) e v)
+   -------------------------------------------------------- local
+   (rcp→ (conf (net (p (proc (x := e) I ...))) Σ D)
+         (τ @ p)
+         (conf (net (p (proc I ...))) (put-var Σ p x v) D))]
+  [(rcp-commute N (net (p (proc (q ⊕ l) I_1 ...))
+                       (q (proc (p & (l_1 P_1) ...) I_2 ...))))
+   (where (_ ... (l (proc I_3 ...)) _ ...) ((l_1 P_1) ...))
+   --------------------------------------------------------------------- sel
+   (rcp→ (conf N Σ D)
+         (p → q [l])
+         (conf (rcp-put-proc
+                (rcp-put-proc
+                 (net) p (proc I_1 ...)) q (proc I_3 ... I_2 ...)) Σ D))]
+  [(rcp-commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
+   (↓ (get-pstore Σ p) e v)
+   ---------------------------------------------------------------------------- com
+   (rcp→ (conf N Σ D)
+         (p v → q)
+         (conf
+          (rcp-put-proc (rcp-put-proc (net) p (proc I_1 ...)) q (proc I_2 ...))
+          (put-var Σ q x v)
+          D))]
+  [(↓ (get-pstore Σ p) e #t)
+   --------------------------------------------------------------- cond-then
+   (rcp→ (conf (net (p (proc (if e (proc I_1 ...) P) I ...))) Σ D)
+         (τ @ p)
+         (conf (net (p (proc I_1 ... I ...))) Σ D))]
+  [(↓ (get-pstore Σ p) e #f)
+   --------------------------------------------------------------- cond-else
+   (rcp→ (conf (net (p (proc (if e P (proc I_1 ...)) I ...))) Σ D)
+         (τ @ p)
+         (conf (net (p (proc I_1 ... I ...))) Σ D))]
+  [(where ((r ...) (proc I_1 ...)) (rcp-get-def D X))
+   ------------------------------------------------------------------------ call
+   (rcp→ (conf (net (p (proc (X q ...) I ...))) Σ D)
+         (τ @ p)
+         (conf (net (p (proc (rcp-subst-i I_1 (r q) ...) ... I ...))) Σ D))]
+  [(rcp-split N M_1 M_2)
+   (where (net _ _ ...) M_1)
+   (where (net _ _ ...) M_2)
+   (rcp→ (conf M_1 Σ_1 D) μ (conf M_3 Σ_2 D))
+   ------------------------------------------------------- par
+   (rcp→ (conf N Σ_1 D) μ (conf (rcp-join M_2 M_3) Σ_2 D))])
+
+(define-term D-ex-7-13
+  (rcp-put-def (rcp-put-def (dstore) (PP_1 q) (proc (q ⊕ sig) (PP_2 q)))
+               (PP_2 p) (proc (p & (sig (proc (PP_1 p)))))))
+
+(define-term N-ex-7-13
+  (rcp-put-proc (rcp-put-proc (net) Alice (proc (PP_1 Bob)))
+                Bob (proc (PP_2 Alice))))
+
+;; (judgment-holds (rcp→ (conf N-ex-6-15 Σ-ex-6-17-1 (dstore)) μ Conf) (μ Conf))
+;; (show-derivations (build-derivations (rcp→ (conf N-ex-6-15 Σ-ex-6-17-1 (dstore)) μ Conf)))
+
+;; (judgment-holds (rcp→ (conf
+;;                        (rcp-put-proc (net) p (proc (X p)))
+;;                        (cstore)
+;;                        (rcp-put-def (dstore) (X p) (proc (X p))))
+;;                       μ Conf) (μ Conf))
+
+;; (judgment-holds (rcp→ (conf N-ex-7-13 (cstore) D-ex-7-13) μ Conf) (μ Conf))
+
+(define RecursiveProc->
+  (reduction-relation
+   RecursiveProc
+   #:domain Conf
+   (--> Conf_1 Conf_2
+        (judgment-holds (rcp→ Conf_1 μ Conf_2))
+        (computed-name (term (slp-format-μ μ))))))
+
+;; (traces RecursiveProc-> (term (conf N-ex-7-13 (cstore) D-ex-7-13)))
