@@ -145,8 +145,10 @@
      `(,store ,@(aput k (list v) alist #:less? symbol<?))]))
 
 (define-metafunction Util
-  put-proc : N p P -> N
-  [(put-proc N p P) ,(apply put-store (term (p P N)))])
+  put-proc : N (p P) ... -> N
+  [(put-proc N) N]
+  [(put-proc N (p P) (q Q) ...)
+   (put-proc ,(apply put-store (term (p P N))) (q Q) ...)])
 
 ;;; SimpleChor
 
@@ -251,8 +253,8 @@
   #:mode (sp→ I O O)
   #:contract (sp→ N μ N)
   [(sp-commute N (net (p (proc (q !) I_1 ...)) (q (proc (p ?) I_2 ...))))
-   ----------------------------------------------------------------------------------- com
-   (sp→ N (p → q) (put-proc (put-proc (net) p (proc I_1 ...)) q (proc I_2 ...)))]
+   ---------------------------------------------------------------------- com
+   (sp→ N (p → q) (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...))))]
   [(sp-split N M_1 M_2)
    (where (net _ _ ...) M_1)
    (where (net _ _ ...) M_2)
@@ -471,7 +473,7 @@
    (stp→ (conf N Σ)
          (p v → q)
          (conf
-          (put-proc (put-proc (net) p (proc I_1 ...)) q (proc I_2 ...))
+          (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...)))
           (put-var Σ q x v)))]
   [(stp-split N M_1 M_2)
    (where (net _ _ ...) M_1)
@@ -480,23 +482,25 @@
    --------------------------------------------------- par
    (stp→ (conf N Σ_1) μ (conf (stp-join M_2 M_3) Σ_2))])
 
-;; (judgment-holds (stp→ (conf (put-proc (net) p (proc (x := 6))) (cstore)) μ Conf) (μ Conf))
+;; (judgment-holds (stp→ (conf (put-proc (net) (p (proc (x := 6)))) (cstore)) μ Conf) (μ Conf))
 
 (define-term N-ex-5-6
-  (put-proc (put-proc (net) Buyer (proc (Seller ! title) (Seller ? price)))
-            Seller (proc (Buyer ? x) (Buyer ! (catalogue x)))))
+  (put-proc (net)
+            (Buyer (proc (Seller ! title) (Seller ? price)))
+            (Seller (proc (Buyer ? x) (Buyer ! (catalogue x))))))
 
 ;; (judgment-holds (stp→ (conf N-ex-5-6 (put-var (cstore) Buyer title "My Choreographies")) μ Conf) (μ Conf))
 
 (define modpow modular-expt)
 
 (define-term N-ex-5-7
-  (put-proc (put-proc (net) Alice (proc (Bob ! (modpow g a p))
-                                        (Bob ? y)
-                                        (s := (modpow y a p))))
-            Bob (proc (Alice ? x)
-                      (Alice ! (modpow g b p))
-                      (s := (modpow x b p)))))
+  (put-proc (net)
+            (Alice (proc (Bob ! (modpow g a p))
+                         (Bob ? y)
+                         (s := (modpow y a p))))
+            (Bob (proc (Alice ? x)
+                       (Alice ! (modpow g b p))
+                       (s := (modpow x b p))))))
 
 (define-term Σ-ex-5-7
   (put-var (put-var (put-var (put-var (put-var (put-var (cstore) Alice p 23) Alice g 5)
@@ -601,7 +605,7 @@
    (cp→ (conf N Σ)
         (p v → q)
         (conf
-         (put-proc (put-proc (net) p (proc I_1 ...)) q (proc I_2 ...))
+         (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...)))
          (put-var Σ q x v)))]
   [(↓ (get-pstore Σ p) e #t)
    ------------------------------------------------------------ cond-then
@@ -621,11 +625,12 @@
    (cp→ (conf N Σ_1) μ (conf (cp-join M_2 M_3) Σ_2))])
 
 (define-term N-ex-6-7
-  (put-proc (put-proc (put-proc (net) p (proc (if (< x 10)
-                                                  (proc (x := (+ x 1)))
-                                                  (proc))))
-                      q (proc (y := #t) (r ! y)))
-            r (proc (q ? z))))
+  (put-proc (net)
+            (p (proc (if (< x 10)
+                         (proc (x := (+ x 1)))
+                         (proc))))
+            (q (proc (y := #t) (r ! y)))
+            (r (proc (q ? z)))))
 
 (define-term Σ-ex-6-7
   (put-var (cstore) p x 7))
@@ -749,16 +754,17 @@
    ------------------------------------------------------------------- sel
    (slp→ (conf N Σ)
          (p → q [l])
-         (conf (put-proc
-                (put-proc
-                 (net) p (proc I_1 ...)) q (proc I_3 ... I_2 ...)) Σ))]
+         (conf (put-proc (net)
+                         (p (proc I_1 ...))
+                         (q (proc I_3 ... I_2 ...)))
+               Σ))]
   [(slp-commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
    (↓ (get-pstore Σ p) e v)
    ---------------------------------------------------------------------------- com
    (slp→ (conf N Σ)
          (p v → q)
          (conf
-          (put-proc (put-proc (net) p (proc I_1 ...)) q (proc I_2 ...))
+          (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...)))
           (put-var Σ q x v)))]
   [(slp-split N M_1 M_2)
    (where (net _ _ ...) M_1)
@@ -774,18 +780,19 @@
   "totally-unique-token")
 
 (define-term N-ex-6-15
-  (put-proc (put-proc (put-proc (net) c (proc (cas ! creds)
-                                              (s &
-                                                 (token (proc (s ? t)))
-                                                 (error (proc)))))
-                      s (proc (cas &
-                                   (ok (proc (c ⊕ token)
-                                             (c ! (new-token))))
-                                   (ko (proc (c ⊕ error))))))
-            cas (proc (c ? x)
-                      (if (valid-creds? x)
-                          (proc (s ⊕ ok))
-                          (proc (s ⊕ ko))))))
+  (put-proc (net)
+            (c (proc (cas ! creds)
+                     (s &
+                        (token (proc (s ? t)))
+                        (error (proc)))))
+            (s (proc (cas &
+                          (ok (proc (c ⊕ token)
+                                    (c ! (new-token))))
+                          (ko (proc (c ⊕ error))))))
+            (cas (proc (c ? x)
+                       (if (valid-creds? x)
+                           (proc (s ⊕ ok))
+                           (proc (s ⊕ ko)))))))
 
 (define-term Σ-ex-6-17-1
   (put-var (cstore) c creds "secret"))
@@ -1094,15 +1101,15 @@
    (rcp→ (conf N Σ D)
          (p → q [l])
          (conf (put-proc
-                (put-proc
-                 (net) p (proc I_1 ...)) q (proc I_3 ... I_2 ...)) Σ D))]
+                (net) (p (proc I_1 ...)) (q (proc I_3 ... I_2 ...)))
+               Σ D))]
   [(rcp-commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
    (↓ (get-pstore Σ p) e v)
    ---------------------------------------------------------------------------- com
    (rcp→ (conf N Σ D)
          (p v → q)
          (conf
-          (put-proc (put-proc (net) p (proc I_1 ...)) q (proc I_2 ...))
+          (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...)))
           (put-var Σ q x v)
           D))]
   [(↓ (get-pstore Σ p) e #t)
@@ -1132,14 +1139,15 @@
                (PP_2 p) (proc (p & (sig (proc (PP_1 p)))))))
 
 (define-term N-ex-7-13
-  (put-proc (put-proc (net) Alice (proc (PP_1 Bob)))
-            Bob (proc (PP_2 Alice))))
+  (put-proc (net)
+            (Alice (proc (PP_1 Bob)))
+            (Bob (proc (PP_2 Alice)))))
 
 ;; (judgment-holds (rcp→ (conf N-ex-6-15 Σ-ex-6-17-1 (dstore)) μ Conf) (μ Conf))
 ;; (show-derivations (build-derivations (rcp→ (conf N-ex-6-15 Σ-ex-6-17-1 (dstore)) μ Conf)))
 
 ;; (judgment-holds (rcp→ (conf
-;;                        (put-proc (net) p (proc (X p)))
+;;                        (put-proc (net) (p (proc (X p))))
 ;;                        (cstore)
 ;;                        (rcp-put-def (dstore) (X p) (proc (X p))))
 ;;                       μ Conf) (μ Conf))
