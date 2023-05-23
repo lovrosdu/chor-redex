@@ -95,6 +95,42 @@
 (define (partial proc . fixed)
   (lambda args (apply proc (append fixed args))))
 
+(define-language Util
+  (id ::= variable-not-otherwise-mentioned)
+  (p q l X ::= id)
+  (e x v I ::= any)
+  (C ::= (chor I ...)))
+
+(define-metafunction Util
+  pn : any -> (any ...)
+  ;; Simple
+  [(pn (p → q)) (p q)]
+  ;; Stateful
+  [(pn (p e → q x)) (p q)]
+  [(pn (p x := e)) (p)]
+  [(pn (p v → q)) (p q)]
+  [(pn (τ @ p)) (p)]
+  ;; Conditional
+  [(pn (if (p e) C_1 C_2))
+   ,(apply set-union (term ((p) (pn C_1) (pn C_2))))]
+  ;; Selective
+  [(pn (p → q [l])) (p q)]
+  ;; Recursive
+  [(pn (X p ...)) (p ...)]
+  [(pn (enter (q ...) _ _)) (q ...)]
+  ;; A whole choreography
+  [(pn (chor I ...)) ((pn I) ...)])
+
+(define-metafunction Util
+  format-μ : any -> string
+  ;; Simple
+  [(format-μ (p → q)) ,(apply format "~a → ~a" (term (p q)))]
+  ;; Stateful
+  [(format-μ (p v → q)) ,(apply format "~a.~s → ~a" (term (p v q)))]
+  [(format-μ (τ @ p)) ,(apply format "τ@~a" (term (p)))]
+  ;; Selective
+  [(format-μ (p → q [l])) ,(apply format "~a → ~a [~a]" (term (p q l)))])
+
 ;;; SimpleChor
 
 (define-language SimpleChor
@@ -106,16 +142,8 @@
   ;; Transitions
   (μ ::= (p → q)))
 
-(define-metafunction SimpleChor
-  sc-pn-i : I -> (p ...)
-  [(sc-pn-i (p → q)) (p q)])
-
-(define-metafunction SimpleChor
-  sc-pn-μ : μ -> (p ...)
-  [(sc-pn-μ (p → q)) (p q)])
-
 ;; (redex-match SimpleChor C (term (chor (p → q) (a → b))))
-;; (term (sc-pn-i (p → q)))
+;; (term (pn (p → q)))
 
 (define-judgment-form SimpleChor
   #:mode (sc→ I O O)
@@ -123,16 +151,12 @@
   [----------------------------------------------- com
    (sc→ (chor (p → q) I ...) (p → q) (chor I ...))]
   [(sc→ (chor I_1 ...) μ (chor I_2 ...))
-   (side-condition ,(apply set-disjoint? (term ((sc-pn-i I) (sc-pn-μ μ)))))
-   ------------------------------------------------------------------------ delay
+   (side-condition ,(apply set-disjoint? (term ((pn I) (pn μ)))))
+   -------------------------------------------------------------- delay
    (sc→ (chor I I_1 ...) μ (chor I I_2 ...))])
 
 ;; (judgment-holds (sc→ (chor (p → q) (r → s)) μ C) (μ C))
 ;; (show-derivations (build-derivations (sc→ (chor (p → q) (r → s)) μ C)))
-
-(define-metafunction SimpleChor
-  sc-format-μ : μ -> string
-  [(sc-format-μ (p → q)) ,(apply format "~a → ~a" (term (p q)))])
 
 (define SimpleChor->
   (reduction-relation
@@ -140,7 +164,7 @@
    #:domain C
    (--> C_1 C_2
         (judgment-holds (sc→ C_1 μ C_2))
-        (computed-name (term (sc-format-μ μ))))))
+        (computed-name (term (format-μ μ))))))
 
 ;; (apply-reduction-relation SimpleChor-> (term (chor (p → q) (p → r))))
 ;; (traces SimpleChor-> (term (chor (p → q) (p → r))))
@@ -251,17 +275,13 @@
 ;; (judgment-holds (sp→ N3-1 μ M) (μ M))
 ;; (show-derivations (build-derivations (sp→ N3-1 μ M)))
 
-(define-metafunction SimpleProc
-  sp-format-μ : μ -> string
-  [(sp-format-μ (p → q)) ,(apply format "~a → ~a" (term (p q)))])
-
 (define SimpleProc->
   (reduction-relation
    SimpleProc
    #:domain N
    (--> N_1 N_2
         (judgment-holds (sp→ N_1 μ N_2))
-        (computed-name (term (sp-format-μ μ))))))
+        (computed-name (term (format-μ μ))))))
 
 ;; (traces SimpleProc-> (term N3-1))
 ;; (stepper SimpleProc-> (term N3-1))
@@ -357,16 +377,6 @@
    (where σ_1 (get-pstore Σ p))
    (where σ ,(apply put-store (term (x v σ_1))))])
 
-(define-metafunction StatefulChor
-  st-pn-i : I -> (p ...)
-  [(st-pn-i (p e → q x)) (p q)]
-  [(st-pn-i (p x := e)) (p)])
-
-(define-metafunction StatefulChor
-  st-pn-μ : μ -> (p ...)
-  [(st-pn-μ (p v → q)) (p q)]
-  [(st-pn-μ (τ @ p)) (p)])
-
 (define-judgment-form StatefulChor
   #:mode (st→ I O O)
   #:contract (st→ Conf μ Conf)
@@ -381,7 +391,7 @@
         (p v → q)
         (conf (chor I ...) (put-var Σ q x v)))]
   [(st→ (conf (chor I_1 ...) Σ_1) μ (conf (chor I_2 ...) Σ_2))
-   (side-condition ,(apply set-disjoint? (term ((st-pn-i I) (st-pn-μ μ)))))
+   (side-condition ,(apply set-disjoint? (term ((pn I) (pn μ)))))
    ------------------------------------------------------------------------ delay
    (st→ (conf (chor I I_1 ...) Σ_1) μ (conf (chor I I_2 ...) Σ_2))])
 
@@ -402,18 +412,13 @@
 ;; (show-derivations (build-derivations (st→ (conf (chor (r y := 4)) (cstore))
 ;;                                           μ (conf C Σ))))
 
-(define-metafunction StatefulChor
-  st-format-μ : μ -> string
-  [(st-format-μ (p v → q)) ,(apply format "~a.~s → ~a" (term (p v q)))]
-  [(st-format-μ (τ @ p)) ,(format "τ@~a" (term p))])
-
 (define StatefulChor->
   (reduction-relation
    StatefulChor
    #:domain Conf
    (--> Conf_1 Conf_2
         (judgment-holds (st→ Conf_1 μ Conf_2))
-        (computed-name (term (st-format-μ μ))))))
+        (computed-name (term (format-μ μ))))))
 
 ;; (traces StatefulChor-> (term (conf C5-6 Σ5-6)))
 ;; (traces StatefulChor-> (term (conf (chor (p 5 → q x) (r y := 4)) (cstore))))
@@ -509,18 +514,13 @@
 
 ;; (judgment-holds (stp→ (conf N-ex-5-7 Σ-ex-5-7) μ Conf) (μ Conf))
 
-(define-metafunction StatefulProc
-  stp-format-μ : μ -> string
-  [(stp-format-μ (p v → q)) ,(apply format "~a.~s → ~a" (term (p v q)))]
-  [(stp-format-μ (τ @ p)) ,(apply format "τ@~a" (term (p)))])
-
 (define StatefulProc->
   (reduction-relation
    StatefulProc
    #:domain Conf
    (--> Conf_1 Conf_2
         (judgment-holds (stp→ Conf_1 μ Conf_2))
-        (computed-name (term (stp-format-μ μ))))))
+        (computed-name (term (format-μ μ))))))
 
 ;; (traces StatefulProc-> (term (conf N-ex-5-6 (put-var (cstore) Buyer title "My Choreographies"))))
 ;; (traces StatefulProc-> (term (conf N-ex-5-7 Σ-ex-5-7)))
@@ -532,11 +532,6 @@
   (I ::=
      ....
      (if (p e) C_1 C_2)))
-
-(define-metafunction/extension st-pn-i ConditionalChor
-  cc-pn-i : I -> (p ...)
-  [(cc-pn-i (if (p e) (chor I_1 ...) (chor I_2 ...)))
-   ,(apply set-union (term ((p) (cc-pn-i I_1) ... (cc-pn-i I_2) ...)))])
 
 (define-overriding-judgment-form ConditionalChor st→
   #:mode (cc→ I O O)
@@ -552,12 +547,12 @@
         (τ @ p)
         (conf (chor I_2 ... I ...) Σ))]
   [(cc→ (conf (chor I_1 ...) Σ_1) μ (conf (chor I_2 ...) Σ_2))
-   (side-condition ,(apply set-disjoint? (term ((cc-pn-i I) (st-pn-μ μ)))))
+   (side-condition ,(apply set-disjoint? (term ((pn I) (pn μ)))))
    ------------------------------------------------------------------------ delay
    (cc→ (conf (chor I I_1 ...) Σ_1) μ (conf (chor I I_2 ...) Σ_2))]
   [(cc→ (conf C_1 Σ_1) μ (conf C_2 Σ_2))
    (cc→ (conf C_3 Σ_1) μ (conf C_4 Σ_2))
-   (side-condition ,(apply set-disjoint? (term ((p) (st-pn-μ μ)))))
+   (side-condition ,(apply set-disjoint? (term ((p) (pn μ)))))
    ---------------------------------------------------------------- delay-cond
    (cc→ (conf (chor (if (p e) C_1 C_3) I ...) Σ_1)
         μ
@@ -581,7 +576,7 @@
    #:domain Conf
    (--> Conf_1 Conf_2
         (judgment-holds (cc→ Conf_1 μ Conf_2))
-        (computed-name (term (st-format-μ μ))))))
+        (computed-name (term (format-μ μ))))))
 
 ;; (traces ConditionalChor-> (term (conf C6-2 Σ6-2)))
 
@@ -653,7 +648,7 @@
    #:domain Conf
    (--> Conf_1 Conf_2
         (judgment-holds (cp→ Conf_1 μ Conf_2))
-        (computed-name (term (stp-format-μ μ))))))
+        (computed-name (term (format-μ μ))))))
 
 ;; (traces ConditionalProc-> (term (conf N-ex-6-7 Σ-ex-6-7)))
 
@@ -671,14 +666,6 @@
      ....
      (p → q [l])))
 
-(define-metafunction/extension cc-pn-i SelectiveChor
-  sl-pn-i : I -> (p ...)
-  [(sl-pn-i (p → q [l])) (p q)])
-
-(define-metafunction/extension st-pn-μ SelectiveChor
-  sl-pn-μ : μ -> (p ...)
-  [(sl-pn-μ (p → q [l])) (p q)])
-
 (define-overriding-judgment-form SelectiveChor cc→
   #:mode (sl→ I O O)
   #:contract (sl→ Conf μ Conf)
@@ -687,12 +674,12 @@
         (p → q [l])
         (conf (chor I ...) Σ))]
   [(sl→ (conf (chor I_1 ...) Σ_1) μ (conf (chor I_2 ...) Σ_2))
-   (side-condition ,(apply set-disjoint? (term ((sl-pn-i I) (sl-pn-μ μ)))))
+   (side-condition ,(apply set-disjoint? (term ((pn I) (pn μ)))))
    ------------------------------------------------------------------------ delay
    (sl→ (conf (chor I I_1 ...) Σ_1) μ (conf (chor I I_2 ...) Σ_2))]
   [(sl→ (conf C_1 Σ_1) μ (conf C_2 Σ_2))
    (sl→ (conf C_3 Σ_1) μ (conf C_4 Σ_2))
-   (side-condition ,(apply set-disjoint? (term ((p) (sl-pn-μ μ)))))
+   (side-condition ,(apply set-disjoint? (term ((p) (pn μ)))))
    ---------------------------------------------------------------- delay-cond
    (sl→ (conf (chor (if (p e) C_1 C_3) I ...) Σ_1)
         μ
@@ -726,17 +713,13 @@
 ;;              (cstore))
 ;;        μ (conf C Σ))))
 
-(define-metafunction/extension st-format-μ SelectiveChor
-  sl-format-μ : μ -> string
-  [(sl-format-μ (p → q [l])) ,(apply format "~a → ~a [~a]" (term (p q l)))])
-
 (define SelectiveChor->
   (reduction-relation
    SelectiveChor
    #:domain Conf
    (--> Conf_1 Conf_2
         (judgment-holds (sl→ Conf_1 μ Conf_2))
-        (computed-name (term (sl-format-μ μ))))))
+        (computed-name (term (format-μ μ))))))
 
 ;; (traces SelectiveChor-> (term (conf C6-16 Σ-ex-6-14)))
 ;; (traces SelectiveChor-> (term (conf (chor (p → q [ok])) (cstore))))
@@ -826,17 +809,13 @@
 ;; (judgment-holds (slp→ (conf N-ex-6-15 Σ-ex-6-17-1) μ Conf) (μ Conf))
 ;; (show-derivations (build-derivations (slp→ (conf N-ex-6-15 Σ-ex-6-17-1) μ Conf)))
 
-(define-metafunction/extension stp-format-μ SelectiveChor
-  slp-format-μ : μ -> string
-  [(slp-format-μ (p → q [l])) ,(apply format "~a → ~a [~a]" (term (p q l)))])
-
 (define SelectiveProc->
   (reduction-relation
    SelectiveProc
    #:domain Conf
    (--> Conf_1 Conf_2
         (judgment-holds (slp→ Conf_1 μ Conf_2))
-        (computed-name (term (slp-format-μ μ))))))
+        (computed-name (term (format-μ μ))))))
 
 ;; (traces SelectiveProc-> (term (conf N-ex-6-15 Σ-ex-6-17-1)))
 ;; (traces SelectiveProc-> (term (conf N-ex-6-15 Σ-ex-6-17-2)))
@@ -874,11 +853,6 @@
    ((subst-p p (p_1 q_1) ...) → (subst-p q (p_1 q_1) ...) [l])]
   [(subst-i (X p ...) (p_1 q_1) ...)
    (X (subst-p p (p_1 q_1) ...) ...)])
-
-(define-metafunction/extension sl-pn-i RecursiveChor
-  rc-pn-i : I -> (p ...)
-  [(rc-pn-i (X p ...)) (p ...)]
-  [(rc-pn-i (enter (q ...) _ _)) (q ...)])
 
 (define-metafunction RecursiveChor
   get-def : D X -> ((p ...) C)
@@ -935,12 +909,12 @@
         (τ @ q)
         (conf (chor I ...) Σ D))]
   [(rc→ (conf (chor I_1 ...) Σ_1 D) μ (conf (chor I_2 ...) Σ_2 D))
-   (side-condition ,(apply set-disjoint? (term ((rc-pn-i I) (sl-pn-μ μ)))))
+   (side-condition ,(apply set-disjoint? (term ((pn I) (pn μ)))))
    ------------------------------------------------------------------------ delay
    (rc→ (conf (chor I I_1 ...) Σ_1 D) μ (conf (chor I I_2 ...) Σ_2 D))]
   [(rc→ (conf C_1 Σ_1 D) μ (conf C_2 Σ_2 D))
    (rc→ (conf C_3 Σ_1 D) μ (conf C_4 Σ_2 D))
-   (side-condition ,(apply set-disjoint? (term ((p) (sl-pn-μ μ)))))
+   (side-condition ,(apply set-disjoint? (term ((p) (pn μ)))))
    ---------------------------------------------------------------- delay-cond
    (rc→ (conf (chor (if (p e) C_1 C_3) I ...) Σ_1 D)
         μ
@@ -952,7 +926,7 @@
    #:domain Conf
    (--> Conf_1 Conf_2
         (judgment-holds (rc→ Conf_1 μ Conf_2))
-        (computed-name (term (sl-format-μ μ))))))
+        (computed-name (term (format-μ μ))))))
 
 (define-term C-ping
   (chor (Ping Alice Bob)))
@@ -1194,6 +1168,6 @@
    #:domain Conf
    (--> Conf_1 Conf_2
         (judgment-holds (rcp→ Conf_1 μ Conf_2))
-        (computed-name (term (slp-format-μ μ))))))
+        (computed-name (term (format-μ μ))))))
 
 ;; (traces RecursiveProc-> (term (conf N-ex-7-13 (cstore) D-ex-7-13)))
