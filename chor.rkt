@@ -8,28 +8,28 @@
 ;; * Abbreviations
 ;;
 ;; - "chor" -- choreography
-;; - "cstore" -- choreographic store
-;; - "pstore" -- process store
-;; - "defs" -- set of definitions (procedures)
-;; - "def" -- definition (procedure)
-;; - "conf" -- configuration
-;;
-;; - "sc" -- Simple Choreographies
-;; - "st" -- Stateful Choreographies
-;; - "cc" -- Conditional Choreographies
-;; - "sl" -- Selective Choreographies
-;; - "rc" -- Recursive Choreographies
-;;
 ;; - "proc" -- process
 ;; - "net" -- network
-;;
-;; - "sp" -- Simple Processes
-;; - "stp" -- Stateful Processes
-;; - "cp" -- Conditional Processes
-;; - "slp" -- Selective Processes
-;;
+;; - "cstore" -- choreographic store
+;; - "pstore" -- process store
+;; - "conf" -- configuration
+;; - "defs" -- set of definitions (procedures)
+;; - "def" -- definition (procedure)
 ;; - "wf" -- well-formed
 ;; - "pn" -- process names
+;;
+;; - "smc" -- Simple Choreographies
+;; - "stc" -- Stateful Choreographies
+;; - "coc" -- Conditional Choreographies
+;; - "slc" -- Selective Choreographies
+;; - "rcc" -- Recursive Choreographies
+;;
+;; - "smp" -- Simple Processes
+;; - "stp" -- Stateful Processes
+;; - "cop" -- Conditional Processes
+;; - "slp" -- Selective Processes
+;; - "rcp" -- Recursive Processes
+;;
 ;; - suffix "p" -- process
 ;; - suffix "i" -- instruction
 ;; - suffix "c" -- choreography
@@ -53,19 +53,8 @@
 ;; - Document sorting behavior. E.g. "join" assumes that the networks are sorted
 ;;   when joining them together.
 ;;
-;; - Implement variadic versions of the "put" metafunctions for convenience.
-;;
-;; - Use more uniform names -- "st" vs. "stp" should probably be "stc" vs.
-;;   "stp".
-;;
-;; - Give up some contract power and generalize the judgment forms and
-;;   metafunctions so that they work for any model. This will reduce duplication
-;;   and probably improve readability a lot.
-;;
 ;; - Document representation of choreographies, processes and stores -- they're
 ;;   just tagged (a)lists.
-;;
-;; - Pull out expression language into a common thing.
 ;;
 ;; - Document that we don't allow symbols or lists as values in expressions.
 
@@ -353,24 +342,24 @@
 ;; (term (pn (p → q)))
 
 (define-judgment-form SimpleChor
-  #:mode (sc→ I O O)
-  #:contract (sc→ C μ C)
-  [----------------------------------------------- com
-   (sc→ (chor (p → q) I ...) (p → q) (chor I ...))]
-  [(sc→ (chor I_1 ...) μ (chor I_2 ...))
+  #:mode (smc→ I O O)
+  #:contract (smc→ C μ C)
+  [------------------------------------------------ com
+   (smc→ (chor (p → q) I ...) (p → q) (chor I ...))]
+  [(smc→ (chor I_1 ...) μ (chor I_2 ...))
    (side-condition ,(apply set-disjoint? (term ((pn I) (pn μ)))))
    -------------------------------------------------------------- delay
-   (sc→ (chor I I_1 ...) μ (chor I I_2 ...))])
+   (smc→ (chor I I_1 ...) μ (chor I I_2 ...))])
 
-;; (judgment-holds (sc→ (chor (p → q) (r → s)) μ C) (μ C))
-;; (show-derivations (build-derivations (sc→ (chor (p → q) (r → s)) μ C)))
+;; (judgment-holds (smc→ (chor (p → q) (r → s)) μ C) (μ C))
+;; (show-derivations (build-derivations (smc→ (chor (p → q) (r → s)) μ C)))
 
 (define SimpleChor->
   (reduction-relation
    SimpleChor
    #:domain C
    (--> C_1 C_2
-        (judgment-holds (sc→ C_1 μ C_2))
+        (judgment-holds (smc→ C_1 μ C_2))
         (computed-name (term (format-μ μ))))))
 
 ;; (apply-reduction-relation SimpleChor-> (term (chor (p → q) (p → r))))
@@ -394,17 +383,17 @@
   (μ ::= (p → q)))
 
 (define-judgment-form SimpleProc
-  #:mode (sp→ I O O)
-  #:contract (sp→ N μ N)
+  #:mode (smp→ I O O)
+  #:contract (smp→ N μ N)
   [(commute N (net (p (proc (q !) I_1 ...)) (q (proc (p ?) I_2 ...))))
    ------------------------------------------------------------------- com
-   (sp→ N (p → q) (make-net (p (proc I_1 ...)) (q (proc I_2 ...))))]
+   (smp→ N (p → q) (make-net (p (proc I_1 ...)) (q (proc I_2 ...))))]
   [(split N M_1 M_2)
    (where (net _ _ ...) M_1)
    (where (net _ _ ...) M_2)
-   (sp→ M_1 μ M_3)
+   (smp→ M_1 μ M_3)
    ------------------------- par
-   (sp→ N μ (join M_2 M_3))])
+   (smp→ N μ (join M_2 M_3))])
 
 (define-term N3-1
   (net (Client (proc (Gateway !)))
@@ -412,24 +401,24 @@
        (Server (proc (Gateway ?)))))
 
 ;; (judgment-holds (split (net) M_1 M_2) (M_1 M_2))
-;; (judgment-holds (sp→ (net) μ N) (μ N))
+;; (judgment-holds (smp→ (net) μ N) (μ N))
 
 ;; (judgment-holds (split (net (p (proc (q !)))) M_1 M_2) (M_1 M_2))
-;; (judgment-holds (sp→ (net (p (proc (q !)))) μ N) (μ N))
+;; (judgment-holds (smp→ (net (p (proc (q !)))) μ N) (μ N))
 
 ;; (judgment-holds (split (net (p (proc (q !))) (q (proc (p ?)))) M_1 M_2) (M_1 M_2))
-;; (judgment-holds (sp→ (net (p (proc (q !))) (q (proc (p ?)))) μ M) (μ M))
+;; (judgment-holds (smp→ (net (p (proc (q !))) (q (proc (p ?)))) μ M) (μ M))
 
 ;; (judgment-holds (split N3-1 M_1 M_2) (M_1 M_2))
-;; (judgment-holds (sp→ N3-1 μ M) (μ M))
-;; (show-derivations (build-derivations (sp→ N3-1 μ M)))
+;; (judgment-holds (smp→ N3-1 μ M) (μ M))
+;; (show-derivations (build-derivations (smp→ N3-1 μ M)))
 
 (define SimpleProc->
   (reduction-relation
    SimpleProc
    #:domain N
    (--> N_1 N_2
-        (judgment-holds (sp→ N_1 μ N_2))
+        (judgment-holds (smp→ N_1 μ N_2))
         (computed-name (term (format-μ μ))))))
 
 ;; (traces SimpleProc-> (term N3-1))
@@ -458,22 +447,22 @@
   (Conf ::= (conf C Σ)))
 
 (define-judgment-form StatefulChor
-  #:mode (st→ I O O)
-  #:contract (st→ Conf μ Conf)
+  #:mode (stc→ I O O)
+  #:contract (stc→ Conf μ Conf)
   [(↓ (get-pstore Σ p) e v)
    ----------------------------------------------- local
-   (st→ (conf (chor (p x := e) I ...) Σ)
-        (τ @ p)
-        (conf (chor I ...) (put-var Σ (p (x v)))))]
+   (stc→ (conf (chor (p x := e) I ...) Σ)
+         (τ @ p)
+         (conf (chor I ...) (put-var Σ (p (x v)))))]
   [(↓ (get-pstore Σ p) e v)
    ----------------------------------------------- com
-   (st→ (conf (chor (p e → q x) I ...) Σ)
-        (p v → q)
-        (conf (chor I ...) (put-var Σ (q (x v)))))]
-  [(st→ (conf (chor I_1 ...) Σ_1) μ (conf (chor I_2 ...) Σ_2))
+   (stc→ (conf (chor (p e → q x) I ...) Σ)
+         (p v → q)
+         (conf (chor I ...) (put-var Σ (q (x v)))))]
+  [(stc→ (conf (chor I_1 ...) Σ_1) μ (conf (chor I_2 ...) Σ_2))
    (side-condition ,(apply set-disjoint? (term ((pn I) (pn μ)))))
-   --------------------------------------------------------------- delay
-   (st→ (conf (chor I I_1 ...) Σ_1) μ (conf (chor I I_2 ...) Σ_2))])
+   ---------------------------------------------------------------- delay
+   (stc→ (conf (chor I I_1 ...) Σ_1) μ (conf (chor I I_2 ...) Σ_2))])
 
 (define (catalogue title)
   (case title
@@ -487,9 +476,9 @@
 (define-term Σ5-6
   (make-cstore (Buyer (title "My Choreographies"))))
 
-;; (judgment-holds (st→ (conf C5-6 Σ5-6) μ (conf C Σ)) (C Σ μ))
-;; (judgment-holds (st→ (conf (chor (r y := 4)) (cstore)) μ (conf C Σ)) (C Σ μ))
-;; (show-derivations (build-derivations (st→ (conf (chor (r y := 4)) (cstore))
+;; (judgment-holds (stc→ (conf C5-6 Σ5-6) μ (conf C Σ)) (C Σ μ))
+;; (judgment-holds (stc→ (conf (chor (r y := 4)) (cstore)) μ (conf C Σ)) (C Σ μ))
+;; (show-derivations (build-derivations (stc→ (conf (chor (r y := 4)) (cstore))
 ;;                                           μ (conf C Σ))))
 
 (define StatefulChor->
@@ -497,7 +486,7 @@
    StatefulChor
    #:domain Conf
    (--> Conf_1 Conf_2
-        (judgment-holds (st→ Conf_1 μ Conf_2))
+        (judgment-holds (stc→ Conf_1 μ Conf_2))
         (computed-name (term (format-μ μ))))))
 
 ;; (traces StatefulChor-> (term (conf C5-6 Σ5-6)))
@@ -591,26 +580,26 @@
      ....
      (if (p e) C_1 C_2)))
 
-(define-overriding-judgment-form ConditionalChor st→
-  #:mode (cc→ I O O)
-  #:contract (cc→ Conf μ Conf)
+(define-overriding-judgment-form ConditionalChor stc→
+  #:mode (coc→ I O O)
+  #:contract (coc→ Conf μ Conf)
   [(↓ (get-pstore Σ p) e #t)
-   -------------------------------------------------------- cond-then
-   (cc→ (conf (chor (if (p e) (chor I_1 ...) C_2) I ...) Σ)
-        (τ @ p)
-        (conf (chor I_1 ... I ...) Σ))]
+   --------------------------------------------------------- cond-then
+   (coc→ (conf (chor (if (p e) (chor I_1 ...) C_2) I ...) Σ)
+         (τ @ p)
+         (conf (chor I_1 ... I ...) Σ))]
   [(↓ (get-pstore Σ p) e #f)
    ----------------------------------------------------------- cond-else
-   (cc→ (conf (chor (if (p e) C_1 (chor I_2 ...)) I ...) Σ)
-        (τ @ p)
-        (conf (chor I_2 ... I ...) Σ))]
-  [(cc→ (conf C_1 Σ_1) μ (conf C_2 Σ_2))
-   (cc→ (conf C_3 Σ_1) μ (conf C_4 Σ_2))
+   (coc→ (conf (chor (if (p e) C_1 (chor I_2 ...)) I ...) Σ)
+         (τ @ p)
+         (conf (chor I_2 ... I ...) Σ))]
+  [(coc→ (conf C_1 Σ_1) μ (conf C_2 Σ_2))
+   (coc→ (conf C_3 Σ_1) μ (conf C_4 Σ_2))
    (side-condition ,(apply set-disjoint? (term ((p) (pn μ)))))
    ----------------------------------------------------------- delay-cond
-   (cc→ (conf (chor (if (p e) C_1 C_3) I ...) Σ_1)
-        μ
-        (conf (chor (if (p e) C_2 C_4) I ...) Σ_2))])
+   (coc→ (conf (chor (if (p e) C_1 C_3) I ...) Σ_1)
+         μ
+         (conf (chor (if (p e) C_2 C_4) I ...) Σ_2))])
 
 (define-term C6-2
   (chor (if (p (< x 10))
@@ -621,15 +610,15 @@
 (define-term Σ6-2
   (make-cstore (p (x 5)) (q (y #t))))
 
-;; (judgment-holds (cc→ (conf C6-2 Σ6-2) μ (conf C Σ)) (C Σ μ))
-;; (show-derivations (build-derivations (cc→ (conf C6-2 Σ6-2) μ (conf C Σ))))
+;; (judgment-holds (coc→ (conf C6-2 Σ6-2) μ (conf C Σ)) (C Σ μ))
+;; (show-derivations (build-derivations (coc→ (conf C6-2 Σ6-2) μ (conf C Σ))))
 
 (define ConditionalChor->
   (reduction-relation
    ConditionalChor
    #:domain Conf
    (--> Conf_1 Conf_2
-        (judgment-holds (cc→ Conf_1 μ Conf_2))
+        (judgment-holds (coc→ Conf_1 μ Conf_2))
         (computed-name (term (format-μ μ))))))
 
 ;; (traces ConditionalChor-> (term (conf C6-2 Σ6-2)))
@@ -643,18 +632,18 @@
      (if e P Q)))
 
 (define-overriding-judgment-form ConditionalProc stp→
-  #:mode (cp→ I O O)
-  #:contract (cp→ Conf μ Conf)
+  #:mode (cop→ I O O)
+  #:contract (cop→ Conf μ Conf)
   [(↓ (get-pstore Σ p) e #t)
    ------------------------------------------------------------ cond-then
-   (cp→ (conf (net (p (proc (if e (proc I_1 ...) P) I ...))) Σ)
-        (τ @ p)
-        (conf (net (p (proc I_1 ... I ...))) Σ))]
+   (cop→ (conf (net (p (proc (if e (proc I_1 ...) P) I ...))) Σ)
+         (τ @ p)
+         (conf (net (p (proc I_1 ... I ...))) Σ))]
   [(↓ (get-pstore Σ p) e #f)
    ------------------------------------------------------------ cond-else
-   (cp→ (conf (net (p (proc (if e P (proc I_1 ...)) I ...))) Σ)
-        (τ @ p)
-        (conf (net (p (proc I_1 ... I ...))) Σ))])
+   (cop→ (conf (net (p (proc (if e P (proc I_1 ...)) I ...))) Σ)
+         (τ @ p)
+         (conf (net (p (proc I_1 ... I ...))) Σ))])
 
 (define-term N-ex-6-7
   (make-net (p (proc (if (< x 10)
@@ -666,14 +655,14 @@
 (define-term Σ-ex-6-7
   (make-cstore (p (x 7))))
 
-;; (judgment-holds (cp→ (conf N-ex-6-7 Σ-ex-6-7) μ Conf) (μ Conf))
+;; (judgment-holds (cop→ (conf N-ex-6-7 Σ-ex-6-7) μ Conf) (μ Conf))
 
 (define ConditionalProc->
   (reduction-relation
    ConditionalProc
    #:domain Conf
    (--> Conf_1 Conf_2
-        (judgment-holds (cp→ Conf_1 μ Conf_2))
+        (judgment-holds (cop→ Conf_1 μ Conf_2))
         (computed-name (term (format-μ μ))))))
 
 ;; (traces ConditionalProc-> (term (conf N-ex-6-7 Σ-ex-6-7)))
@@ -692,13 +681,13 @@
      ....
      (p → q [l])))
 
-(define-overriding-judgment-form SelectiveChor cc→
-  #:mode (sl→ I O O)
-  #:contract (sl→ Conf μ Conf)
-  [-------------------------------------- sel
-   (sl→ (conf (chor (p → q [l]) I ...) Σ)
-        (p → q [l])
-        (conf (chor I ...) Σ))])
+(define-overriding-judgment-form SelectiveChor coc→
+  #:mode (slc→ I O O)
+  #:contract (slc→ Conf μ Conf)
+  [--------------------------------------- sel
+   (slc→ (conf (chor (p → q [l]) I ...) Σ)
+         (p → q [l])
+         (conf (chor I ...) Σ))])
 
 (define (timestamp)
   (date->string (current-date)))
@@ -716,11 +705,11 @@
   (make-cstore (Buyer (title "My Choreographies")
                       (address "Internet Street"))))
 
-;; (judgment-holds (sl→ (conf C6-16 Σ-ex-6-14) μ (conf C Σ)) (C Σ μ))
-;; (show-derivations (build-derivations (sl→ (conf C6-16 Σ-ex-6-14) μ (conf C Σ))))
+;; (judgment-holds (slc→ (conf C6-16 Σ-ex-6-14) μ (conf C Σ)) (C Σ μ))
+;; (show-derivations (build-derivations (slc→ (conf C6-16 Σ-ex-6-14) μ (conf C Σ))))
 ;; (show-derivations
 ;;  (build-derivations
-;;   (sl→ (conf (chor (if (p e)
+;;   (slc→ (conf (chor (if (p e)
 ;;                        (chor (q → r [ok])
 ;;                              (q x := 4))
 ;;                        (chor (q → r [ok])
@@ -733,7 +722,7 @@
    SelectiveChor
    #:domain Conf
    (--> Conf_1 Conf_2
-        (judgment-holds (sl→ Conf_1 μ Conf_2))
+        (judgment-holds (slc→ Conf_1 μ Conf_2))
         (computed-name (term (format-μ μ))))))
 
 ;; (traces SelectiveChor-> (term (conf C6-16 Σ-ex-6-14)))
@@ -754,7 +743,7 @@
      ....
      (p → q [l])))
 
-(define-overriding-judgment-form SelectiveProc cp→
+(define-overriding-judgment-form SelectiveProc cop→
   #:mode (slp→ I O O)
   #:contract (slp→ Conf μ Conf)
   [(commute N (net (p (proc (q ⊕ l) I_1 ...))
@@ -820,69 +809,69 @@
   (Conf ::= (conf C Σ D)))
 
 (define-judgment-form RecursiveChor
-  #:mode (rc→ I O O)
-  #:contract (rc→ Conf μ Conf)
+  #:mode (rcc→ I O O)
+  #:contract (rcc→ Conf μ Conf)
   [(↓ (get-pstore Σ p) e v)
    ------------------------------------------------- local
-   (rc→ (conf (chor (p x := e) I ...) Σ D)
-        (τ @ p)
-        (conf (chor I ...) (put-var Σ (p (x v))) D))]
+   (rcc→ (conf (chor (p x := e) I ...) Σ D)
+         (τ @ p)
+         (conf (chor I ...) (put-var Σ (p (x v))) D))]
   [(↓ (get-pstore Σ p) e v)
    ------------------------------------------------- com
-   (rc→ (conf (chor (p e → q x) I ...) Σ D)
-        (p v → q)
-        (conf (chor I ...) (put-var Σ (q (x v))) D))]
+   (rcc→ (conf (chor (p e → q x) I ...) Σ D)
+         (p v → q)
+         (conf (chor I ...) (put-var Σ (q (x v))) D))]
   [---------------------------------------- sel
-   (rc→ (conf (chor (p → q [l]) I ...) Σ D)
-        (p → q [l])
-        (conf (chor I ...) Σ D))]
+   (rcc→ (conf (chor (p → q [l]) I ...) Σ D)
+         (p → q [l])
+         (conf (chor I ...) Σ D))]
   [(↓ (get-pstore Σ p) e #t)
-   ---------------------------------------------------------- cond-then
-   (rc→ (conf (chor (if (p e) (chor I_1 ...) C_2) I ...) Σ D)
-        (τ @ p)
-        (conf (chor I_1 ... I ...) Σ D))]
+   ----------------------------------------------------------- cond-then
+   (rcc→ (conf (chor (if (p e) (chor I_1 ...) C_2) I ...) Σ D)
+         (τ @ p)
+         (conf (chor I_1 ... I ...) Σ D))]
   [(↓ (get-pstore Σ p) e #f)
-   ---------------------------------------------------------- cond-else
-   (rc→ (conf (chor (if (p e) C_1 (chor I_2 ...)) I ...) Σ D)
-        (τ @ p)
-        (conf (chor I_2 ... I ...) Σ D))]
+   ----------------------------------------------------------- cond-else
+   (rcc→ (conf (chor (if (p e) C_1 (chor I_2 ...)) I ...) Σ D)
+         (τ @ p)
+         (conf (chor I_2 ... I ...) Σ D))]
   [(where ((q ...) (chor I_1 ...)) (get-def D X))
    (where (p_1 ... p_2 p_3 ...) (p ...))
-   ----------------------------------------------------------------- call-first
-   (rc→ (conf (chor (X p ...) I ...) Σ D)
-        (τ @ p_2)
-        (conf (chor (enter (p_1 ... p_3 ...) (X p ...) (chor I ...))
-                    (subst I_1 (q p) ...) ...
-                    I ...)
-              Σ D))]
+   ------------------------------------------------------------------ call-first
+   (rcc→ (conf (chor (X p ...) I ...) Σ D)
+         (τ @ p_2)
+         (conf (chor (enter (p_1 ... p_3 ...) (X p ...) (chor I ...))
+                     (subst I_1 (q p) ...) ...
+                     I ...)
+               Σ D))]
   [(where (q_1 ... q_2 q_3 ...) (q ...))
    (side-condition ,(> (length (term (q ...))) 1))
-   ------------------------------------------------------------------- call-enter
-   (rc→ (conf (chor (enter (q ...) (X p ...) C) I ...) Σ D)
-        (τ @ q_2)
-        (conf (chor (enter (q_1 ... q_3 ...) (X p ...) C) I ...) Σ D))]
-  [---------------------------------------------------- call-last
-   (rc→ (conf (chor (enter (q) (X p ...) C) I ...) Σ D)
-        (τ @ q)
-        (conf (chor I ...) Σ D))]
-  [(rc→ (conf (chor I_1 ...) Σ_1 D) μ (conf (chor I_2 ...) Σ_2 D))
+   -------------------------------------------------------------------- call-enter
+   (rcc→ (conf (chor (enter (q ...) (X p ...) C) I ...) Σ D)
+         (τ @ q_2)
+         (conf (chor (enter (q_1 ... q_3 ...) (X p ...) C) I ...) Σ D))]
+  [----------------------------------------------------- call-last
+   (rcc→ (conf (chor (enter (q) (X p ...) C) I ...) Σ D)
+         (τ @ q)
+         (conf (chor I ...) Σ D))]
+  [(rcc→ (conf (chor I_1 ...) Σ_1 D) μ (conf (chor I_2 ...) Σ_2 D))
    (side-condition ,(apply set-disjoint? (term ((pn I) (pn μ)))))
-   ------------------------------------------------------------------- delay
-   (rc→ (conf (chor I I_1 ...) Σ_1 D) μ (conf (chor I I_2 ...) Σ_2 D))]
-  [(rc→ (conf C_1 Σ_1 D) μ (conf C_2 Σ_2 D))
-   (rc→ (conf C_3 Σ_1 D) μ (conf C_4 Σ_2 D))
+   -------------------------------------------------------------------- delay
+   (rcc→ (conf (chor I I_1 ...) Σ_1 D) μ (conf (chor I I_2 ...) Σ_2 D))]
+  [(rcc→ (conf C_1 Σ_1 D) μ (conf C_2 Σ_2 D))
+   (rcc→ (conf C_3 Σ_1 D) μ (conf C_4 Σ_2 D))
    (side-condition ,(apply set-disjoint? (term ((p) (pn μ)))))
    ----------------------------------------------------------- delay-cond
-   (rc→ (conf (chor (if (p e) C_1 C_3) I ...) Σ_1 D)
-        μ
-        (conf (chor (if (p e) C_2 C_4) I ...) Σ_2 D))])
+   (rcc→ (conf (chor (if (p e) C_1 C_3) I ...) Σ_1 D)
+         μ
+         (conf (chor (if (p e) C_2 C_4) I ...) Σ_2 D))])
 
 (define RecursiveChor->
   (reduction-relation
    RecursiveChor
    #:domain Conf
    (--> Conf_1 Conf_2
-        (judgment-holds (rc→ Conf_1 μ Conf_2))
+        (judgment-holds (rcc→ Conf_1 μ Conf_2))
         (computed-name (term (format-μ μ))))))
 
 (define-term C-ping
@@ -935,43 +924,43 @@
 ;; (traces RecursiveChor-> (term (conf C7-2 (cstore) D7-2)))
 
 (define-judgment-form RecursiveChor
-  #:mode (rc-wf-c I O I)
-  #:contract (rc-wf-c D (p ...) C)
-  [------------------- wf-end
-   (rc-wf-c _ () (chor))]
-  [(rc-wf-c D (p_1 ...) (chor I ...))
+  #:mode (rcc-wf-c I O I)
+  #:contract (rcc-wf-c D (p ...) C)
+  [---------------------- wf-end
+   (rcc-wf-c _ () (chor))]
+  [(rcc-wf-c D (p_1 ...) (chor I ...))
    (side-condition (not (apply equal? (term (p q)))))
    (where (p_2 ...) ,(apply set-union (term ((p q) (p_1 ...)))))
    ------------------------------------------------------------- wf-com
-   (rc-wf-c D (p_2 ...) (chor (p e → q x) I ...))]
-  [(rc-wf-c D (p_1 ...) (chor I ...))
+   (rcc-wf-c D (p_2 ...) (chor (p e → q x) I ...))]
+  [(rcc-wf-c D (p_1 ...) (chor I ...))
    (side-condition (not (apply equal? (term (p q)))))
    (where (p_2 ...) ,(apply set-union (term ((p q) (p_1 ...)))))
    ------------------------------------------------------------- wf-sel
-   (rc-wf-c D (p_2 ...) (chor (p → q [l]) I ...))]
-  [(rc-wf-c D (p_1 ...) (chor I ...))
+   (rcc-wf-c D (p_2 ...) (chor (p → q [l]) I ...))]
+  [(rcc-wf-c D (p_1 ...) (chor I ...))
    (where (p_2 ...) ,(apply set-union (term ((p) (p_1 ...)))))
    ----------------------------------------------------------- wf-local
-   (rc-wf-c D (p_2 ...) (chor (p x := e) I ...))]
-  [(rc-wf-c D (p_1 ...) C_1)
-   (rc-wf-c D (p_2 ...) C_2)
-   (rc-wf-c D (p_3 ...) (chor I ...))
+   (rcc-wf-c D (p_2 ...) (chor (p x := e) I ...))]
+  [(rcc-wf-c D (p_1 ...) C_1)
+   (rcc-wf-c D (p_2 ...) C_2)
+   (rcc-wf-c D (p_3 ...) (chor I ...))
    (where (p_4 ...)
           ,(apply set-union (term ((p) (p_1 ...) (p_2 ...) (p_3 ...)))))
    --------------------------------------------------------------------- wf-cond
-   (rc-wf-c D (p_4 ...) (chor (if (p e) C_1 C_2) I ...))]
+   (rcc-wf-c D (p_4 ...) (chor (if (p e) C_1 C_2) I ...))]
   [(where ((q ...) _) (get-def D X))
-   (rc-wf-c D (p_1 ...) (chor I ...))
+   (rcc-wf-c D (p_1 ...) (chor I ...))
    (side-condition ,(= (length (term (p ...))) (length (term (q ...)))))
    (side-condition ,(not (check-duplicates (term (p ...)))))
    (where (p_2 ...) ,(apply set-union (term ((p ...) (p_1 ...)))))
    --------------------------------------------------------------------- wf-call
-   (rc-wf-c D (p_2 ...) (chor (X p ...) I ...))])
+   (rcc-wf-c D (p_2 ...) (chor (X p ...) I ...))])
 
 (define-judgment-form RecursiveChor
-  #:mode (rc-wf-d I O)
-  #:contract (rc-wf-d D ((X (p ...)) ...))
-  [(rc-wf-c D (p ...) C)
+  #:mode (rcc-wf-d I O)
+  #:contract (rcc-wf-d D ((X (p ...)) ...))
+  [(rcc-wf-c D (p ...) C)
    ...
    (side-condition ,(andmap (compose not check-duplicates)
                             (term ((q ...) ...))))
@@ -979,20 +968,20 @@
    (side-condition ,(andmap (compose (partial < 1) length)
                             (term ((q ...) ...))))
    ---------------------------------------------------------------------------
-   (rc-wf-d (name D (defs (X ((q ...) C)) ...)) ((X (p ...)) ...))])
+   (rcc-wf-d (name D (defs (X ((q ...) C)) ...)) ((X (p ...)) ...))])
 
 (define-judgment-form RecursiveChor
-  #:mode (rc-wf-f I O)
-  #:contract (rc-wf-f Conf (p ...))
-  [(rc-wf-c D (p ...) C)
-   (rc-wf-d D _)
+  #:mode (rcc-wf-f I O)
+  #:contract (rcc-wf-f Conf (p ...))
+  [(rcc-wf-c D (p ...) C)
+   (rcc-wf-d D _)
    ------------------------------
-   (rc-wf-f (conf C _ D) (p ...))])
+   (rcc-wf-f (conf C _ D) (p ...))])
 
-;; (judgment-holds (rc-wf-c D-ping any C-ping) any)
-;; (judgment-holds (rc-wf-d D-ping any) any)
-;; (judgment-holds (rc-wf-d (defs (X ((p) (chor (p x := e))))) any) any)
-;; (judgment-holds (rc-wf-f (conf C-ping (cstore) D-ping) any) any)
+;; (judgment-holds (rcc-wf-c D-ping any C-ping) any)
+;; (judgment-holds (rcc-wf-d D-ping any) any)
+;; (judgment-holds (rcc-wf-d (defs (X ((p) (chor (p x := e))))) any) any)
+;; (judgment-holds (rcc-wf-f (conf C-ping (cstore) D-ping) any) any)
 
 ;;; RecursiveProc
 
