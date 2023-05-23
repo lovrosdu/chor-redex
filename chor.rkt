@@ -1067,3 +1067,54 @@
         (computed-name (term (format-μ μ))))))
 
 ;; (traces RecursiveProc-> (term (conf N-ex-7-13 (cstore) D-ex-7-13)))
+
+;;; Choreographic Choice
+
+(define-extended-language ChoiceChor RecursiveChor
+  ;; Choreographies
+  (I ::=
+     ....
+     (C + p C)))
+
+(define-extended-judgment-form ChoiceChor rcc→
+  #:mode (chc→ I O O)
+  #:contract (chc→ Conf μ Conf)
+  [(chc→ (conf C_1 Σ D) μ (conf (chor I_′ ...) Σ_′ D))
+   (side-condition ,(apply set-member? (term ((pn μ) p))))
+   ------------------------------------------------------- choice-l
+   (chc→ (conf (chor (C_1 + p C_2) I ...) Σ D)
+         μ
+         (conf (chor I_′ ... I ... ) Σ_′ D))]
+  [(chc→ (conf C_2 Σ D) μ (conf (chor I_′ ...) Σ_′ D))
+   (side-condition ,(apply set-member? (term ((pn μ) p))))
+   ------------------------------------------------------- choice-r
+   (chc→ (conf (chor (C_1 + p C_2) I ...) Σ D)
+         μ
+         (conf (chor I_′ ... I ... ) Σ_′ D))]
+  [(chc→ (conf C_1 Σ D) μ (conf C_1′ Σ_′ D))
+   (chc→ (conf C_2 Σ D) μ (conf C_2′ Σ_′ D))
+   (side-condition ,(apply (compose not set-member?) (term ((pn μ) p))))
+   --------------------------------------------------------------------- delay-choice
+   (chc→ (conf (chor (C_1 + p C_2) I ...) Σ D)
+         μ
+         (conf (chor (C_1′ + p C_2′) I ...) Σ_′ D))])
+
+(define ChoiceChor->
+  (reduction-relation
+   ChoiceChor
+   #:domain Conf
+   (--> Conf_1 Conf_2
+        (judgment-holds (chc→ Conf_1 μ Conf_2))
+        (computed-name (term (format-μ μ))))))
+
+(define-term C-10-5
+  ,(term-let ([C_1 (term (chor (Bob news → Alice x)
+                               (Carol news → Alice y)))]
+              [C_2 (term (chor (Carol news → Alice y)
+                               (Bob news → Alice x)))])
+             (term (chor (Bob news := "bob")
+                         (Carol news := "carol")
+                         (C_1 + Alice C_2)))))
+
+;; (traces ChoiceChor-> (term (conf C-10-5 (cstore) (defs))))
+;; (show-derivations (build-derivations (chc→ (conf C-10-5 (cstore) (defs)) μ Conf)))
