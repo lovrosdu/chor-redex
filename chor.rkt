@@ -68,8 +68,12 @@
 ;; - Pull out expression language into a common thing.
 ;;
 ;; - Rename "dstore" to "defs"?
+;;
+;; - Document that we don't allow symbols or lists as values in expressions.
 
-;;; Util
+;;; * Util
+
+;;; ** General
 
 (define (aput k v alist #:equal? [equal? equal?] #:less? [less? <])
   (define (rec k v alist res)
@@ -96,13 +100,31 @@
 (define (partial proc . fixed)
   (lambda args (apply proc (append fixed args))))
 
+;;; ** Common Language
+
 (define-language Util
   (id ::= variable-not-otherwise-mentioned)
-  (p q r l X ::= id)
-  (e x v I ::= any)
+  ;; Expressions
+  (v ::= any)
+  (x f ::= id)
+  (e ::= v x (f e ...))
+  ;; Simple
+  (p q r ::= id)
+  (I ::= any)
   (C ::= (chor I ...))
   (P Q R ::= (proc I ...))
-  (N M ::= (net (p P) ...)))
+  (N M ::= (net (p P) ...))
+  ;; Stateful
+  (σ ::= (pstore (x v) ...))
+  (Σ ::= (cstore (p σ) ...))
+  ;; Selective
+  (l ::= id)
+  ;; Recursive
+  (X ::= id)
+  (CP ::= C P)
+  (D ::= (dstore (X ((p ...) CP)) ...)))
+
+;;; ** Process Names
 
 (define-metafunction Util
   pn : any -> (any ...)
@@ -124,6 +146,8 @@
   ;; A whole choreography
   [(pn (chor I ...)) ((pn I) ...)])
 
+;;; ** Transition Formatting
+
 (define-metafunction Util
   format-μ : any -> string
   ;; Simple
@@ -133,6 +157,8 @@
   [(format-μ (τ @ p)) ,(apply format "τ@~a" (term (p)))]
   ;; Selective
   [(format-μ (p → q [l])) ,(apply format "~a → ~a [~a]" (term (p q l)))])
+
+;;; ** Stores
 
 (define (assoc-store k store [default (void)])
   (match store
@@ -151,6 +177,115 @@
   [(put-proc N (p P) (q Q) ...)
    (put-proc ,(apply put-store (term (p P N))) (q Q) ...)])
 
+(define-metafunction Util
+  get-pstore : Σ p -> σ
+  [(get-pstore Σ p) ,(apply assoc-store (term (p Σ (pstore))))])
+
+(define-metafunction Util
+  get-var : σ x -> (boolean v)
+  [(get-var σ x)
+   (#t v)
+   (where v ,(apply assoc-store (term (x σ))))
+   (side-condition (not (equal? (term v) (void))))]
+  [(get-var _ _) (#f 42)])
+
+(define-metafunction Util
+  put-var* : Σ p (x v) ... -> Σ
+  [(put-var* Σ _) Σ]
+  [(put-var* Σ p (x v) (x_1 v_1) ...)
+   (put-var* ,(apply put-store (term (p σ Σ))) p (x_1 v_1) ...)
+   (where σ_1 (get-pstore Σ p))
+   (where σ ,(apply put-store (term (x v σ_1))))])
+
+(define-metafunction Util
+  put-var : Σ (p (x v) ...) ... -> Σ
+  [(put-var Σ) Σ]
+  [(put-var Σ (p (x v) ...) (p_1 (x_1 v_1) ...) ...)
+   (put-var (put-var* Σ p (x v) ...) (p_1 (x_1 v_1) ...) ...)])
+
+(define-metafunction Util
+  get-def : D X -> ((p ...) CP)
+  [(get-def D X) ,(apply assoc-store (term (X D)))])
+
+(define-metafunction Util
+  put-def : D (X p ...) CP -> D
+  [(put-def D (X p ...) CP) ,(apply put-store (term (X ((p ...) CP) D)))])
+
+;;; ** Evaluation
+
+(define (eval-safe f args)
+  (with-handlers ([exn:fail? (lambda (v)
+                               ((error-display-handler) (exn-message v) v)
+                               (list #f 42))])
+    (list #t (apply (eval f) args))))
+
+(define-judgment-form Util
+  #:mode (↓ I I O)
+  #:contract (↓ σ e v)
+  [(side-condition ,(not (or (symbol? (term v)) (list? (term v)))))
+   ---------------------------------------------------------------- val
+   (↓ _ v v)]
+  [(where (#t v) (get-var σ x))
+   ---------------------------- var
+   (↓ σ x v)]
+  [(↓ σ e v)
+   ...
+   (where (#t v_1) ,(apply eval-safe (term (f (v ...)))))
+   ------------------------------------------------------ call
+   (↓ σ (f e ...) v_1)])
+
+;; (judgment-holds (↓ (pstore (a 2) (b 3)) (+ 2 5 a b) v) v)
+;; (show-derivations (build-derivations (↓ (pstore (a 2) (b 3)) (+ 2 5 a b) v)))
+
+;; NOTE: If a process doesn't yet possess a referenced variable, the judgment
+;; should just not hold, instead of throwing an error.
+;;
+;; (judgment-holds (↓ (pstore) x v) v)
+
+;;; ** Substitution
+
+(define-metafunction Util
+  subst-p : p (p p) ... -> p
+  [(subst-p p (p_1 q_1) ... (p q) (p_2 q_2) ...) q]
+  [(subst-p p _ ...) p])
+
+(define-metafunction Util
+  subst : I (p p) ... -> I
+  ;; Stateful
+  [(subst (p e → q x) (p_1 q_1) ...)
+   ((subst-p p (p_1 q_1) ...) e → (subst-p q (p_1 q_1) ...) x)]
+  [(subst (p x := e) (p_1 q_1) ...)
+   ((subst-p p (p_1 q_1) ...) x := e)]
+  [(subst (p ! e) (p_1 q_1) ...)
+   ((subst-p p (p_1 q_1) ...) ! e)]
+  [(subst (p ? x) (p_1 q_1) ...)
+   ((subst-p p (p_1 q_1) ...) ? x)]
+  [(subst (x := e) _ ...)
+   (x := e)]
+  ;; Conditional
+  [(subst (if (p e) (chor I_1 ...) (chor I_2 ...)) (p_1 q_1) ...)
+   (if ((subst-p p (p_1 q_1) ...) e)
+       (chor (subst I_1 (p_1 q_1) ...) ...)
+       (chor (subst I_2 (p_1 q_1) ...) ...))]
+  [(subst (if e (proc I_1 ...) (proc I_2 ...)) (p_1 q_1) ...)
+   (if e
+       (proc (subst I_1 (p_1 q_1) ...) ...)
+       (proc (subst I_2 (p_1 q_1) ...) ...))]
+  ;; Selective
+  [(subst (p → q [l]) (p_1 q_1) ...)
+   ((subst-p p (p_1 q_1) ...) → (subst-p q (p_1 q_1) ...) [l])]
+  [(subst (p ⊕ l) (p_1 q_1) ...)
+   ((subst-p p (p_1 q_1) ...) ⊕ l)]
+  [(subst (p & (l (proc I ...)) ...) (p_1 q_1) ...)
+   ((subst-p p (p_1 q_1) ...) & (l (proc (subst I (p_1 q_1)) ...)) ...)]
+  ;; Recursive
+  [(subst (X p ...) (p_1 q_1) ...)
+   (X (subst-p p (p_1 q_1) ...) ...)]
+  [(subst (X p ...) (p_1 q_1) ...)
+   (X (subst-p p (p_1 q_1) ...) ...)])
+
+;;; ** Parallel Composition Commutativity
+
 (define-judgment-form Util
   #:mode (commute I O)
   #:contract (commute N N)
@@ -158,6 +293,8 @@
    (commute (net (p P) (q Q)) (net (p P) (q Q)))]
   [--------------------------------------------- commute
    (commute (net (p P) (q Q)) (net (q Q) (p P)))])
+
+;;; ** Parallel Composition Associativity
 
 (define-judgment-form Util
   #:mode (split I O O)
@@ -285,16 +422,6 @@
 ;; (traces SimpleProc-> (term N3-1))
 ;; (stepper SimpleProc-> (term N3-1))
 
-;;; Expressions
-
-;; (define-language Expr
-;;   (id ::= variable-not-otherwise-mentioned)
-;;   (v ::= any)
-;;   (x ::= id)
-;;   (f ::= id)
-;;   (e ::= v x (f e ...))
-;;   (σ ::= (pstore (x v) ...)))
-
 ;;; StatefulChor
 
 (define-extended-language StatefulChor SimpleChor
@@ -317,54 +444,6 @@
   ;; Configurations
   (Conf ::= (conf C Σ)))
 
-(define-metafunction StatefulChor
-  get-var : σ x -> (boolean v)
-  [(get-var σ x)
-   (#t v)
-   (where v ,(apply assoc-store (term (x σ))))
-   (side-condition (not (equal? (term v) (void))))]
-  [(get-var _ _) (#f 42)])
-
-(define (eval-safe f args)
-  (with-handlers ([exn:fail? (lambda (v)
-                               ((error-display-handler) (exn-message v) v)
-                               (list #f 42))])
-    (list #t (apply (eval f) args))))
-
-(define-judgment-form StatefulChor
-  #:mode (↓ I I O)
-  #:contract (↓ σ e v)
-  [(side-condition ,(not (or (symbol? (term v)) (list? (term v)))))
-   ---------------------------------------------------------------- val
-   (↓ _ v v)]
-  [(where (#t v) (get-var σ x))
-   ---------------------------- var
-   (↓ σ x v)]
-  [(↓ σ e v)
-   ...
-   (where (#t v_1) ,(apply eval-safe (term (f (v ...)))))
-   ------------------------------------------------------ call
-   (↓ σ (f e ...) v_1)])
-
-;; (judgment-holds (↓ (pstore (a 2) (b 3)) (+ 2 5 a b) v) v)
-;; (show-derivations (build-derivations (↓ (pstore (a 2) (b 3)) (+ 2 5 a b) v)))
-
-;; NOTE: If a process doesn't yet possess a referenced variable, the judgment
-;; should just not hold, instead of throwing an error.
-;;
-;; (judgment-holds (↓ (pstore) x v) v)
-
-(define-metafunction StatefulChor
-  get-pstore : Σ p -> σ
-  [(get-pstore Σ p) ,(apply assoc-store (term (p Σ (pstore))))])
-
-(define-metafunction StatefulChor
-  put-var : Σ p x v -> Σ
-  [(put-var Σ p x v)
-   ,(apply put-store (term (p σ Σ)))
-   (where σ_1 (get-pstore Σ p))
-   (where σ ,(apply put-store (term (x v σ_1))))])
-
 (define-judgment-form StatefulChor
   #:mode (st→ I O O)
   #:contract (st→ Conf μ Conf)
@@ -372,12 +451,12 @@
    ------------------------------------------- local
    (st→ (conf (chor (p x := e) I ...) Σ)
         (τ @ p)
-        (conf (chor I ...) (put-var Σ p x v)))]
+        (conf (chor I ...) (put-var Σ (p (x v)))))]
   [(↓ (get-pstore Σ p) e v)
    ------------------------------------------- com
    (st→ (conf (chor (p e → q x) I ...) Σ)
         (p v → q)
-        (conf (chor I ...) (put-var Σ q x v)))]
+        (conf (chor I ...) (put-var Σ (q (x v)))))]
   [(st→ (conf (chor I_1 ...) Σ_1) μ (conf (chor I_2 ...) Σ_2))
    (side-condition ,(apply set-disjoint? (term ((pn I) (pn μ)))))
    ------------------------------------------------------------------------ delay
@@ -393,7 +472,7 @@
         (Seller (catalogue x) → Buyer price)))
 
 (define-term Σ5-6
-  (put-var (cstore) Buyer title "My Choreographies"))
+  (put-var (cstore) (Buyer (title "My Choreographies"))))
 
 ;; (judgment-holds (st→ (conf C5-6 Σ5-6) μ (conf C Σ)) (C Σ μ))
 ;; (judgment-holds (st→ (conf (chor (r y := 4)) (cstore)) μ (conf C Σ)) (C Σ μ))
@@ -441,7 +520,7 @@
    ------------------------------------------------------ local
    (stp→ (conf (net (p (proc (x := e) I ...))) Σ)
          (τ @ p)
-         (conf (net (p (proc I ...))) (put-var Σ p x v)))]
+         (conf (net (p (proc I ...))) (put-var Σ (p (x v)))))]
   [(commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
    (↓ (get-pstore Σ p) e v)
    ---------------------------------------------------------------------------- com
@@ -449,7 +528,7 @@
          (p v → q)
          (conf
           (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...)))
-          (put-var Σ q x v)))]
+          (put-var Σ (q (x v)))))]
   [(split N M_1 M_2)
    (where (net _ _ ...) M_1)
    (where (net _ _ ...) M_2)
@@ -464,7 +543,7 @@
             (Buyer (proc (Seller ! title) (Seller ? price)))
             (Seller (proc (Buyer ? x) (Buyer ! (catalogue x))))))
 
-;; (judgment-holds (stp→ (conf N-ex-5-6 (put-var (cstore) Buyer title "My Choreographies")) μ Conf) (μ Conf))
+;; (judgment-holds (stp→ (conf N-ex-5-6 (put-var (cstore) (Buyer (title "My Choreographies")))) μ Conf) (μ Conf))
 
 (define modpow modular-expt)
 
@@ -478,11 +557,9 @@
                        (s := (modpow x b p))))))
 
 (define-term Σ-ex-5-7
-  (put-var (put-var (put-var (put-var (put-var (put-var (cstore) Alice p 23) Alice g 5)
-                                      Alice a ,(random 10))
-                             Bob p 23)
-                    Bob g 5)
-           Bob b ,(random 10)))
+  (put-var (cstore)
+           (Alice (p 23) (g 5) (a ,(random 10)))
+           (Bob (p 23) (g 5) (b ,(random 10)))))
 
 ;; (judgment-holds (stp→ (conf N-ex-5-7 Σ-ex-5-7) μ Conf) (μ Conf))
 
@@ -494,7 +571,7 @@
         (judgment-holds (stp→ Conf_1 μ Conf_2))
         (computed-name (term (format-μ μ))))))
 
-;; (traces StatefulProc-> (term (conf N-ex-5-6 (put-var (cstore) Buyer title "My Choreographies"))))
+;; (traces StatefulProc-> (term (conf N-ex-5-6 (put-var (cstore) (Buyer (title "My Choreographies"))))))
 ;; (traces StatefulProc-> (term (conf N-ex-5-7 Σ-ex-5-7)))
 
 ;;; ConditionalChor
@@ -537,7 +614,7 @@
             (chor (q y := #t)))))
 
 (define-term Σ6-2
-  (put-var (put-var (cstore) p x 5) q y #t))
+  (put-var (cstore) (p (x 5)) (q (y #t))))
 
 ;; (judgment-holds (cc→ (conf C6-2 Σ6-2) μ (conf C Σ)) (C Σ μ))
 ;; (show-derivations (build-derivations (cc→ (conf C6-2 Σ6-2) μ (conf C Σ))))
@@ -570,7 +647,7 @@
         (p v → q)
         (conf
          (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...)))
-         (put-var Σ q x v)))]
+         (put-var Σ (q (x v)))))]
   [(↓ (get-pstore Σ p) e #t)
    ------------------------------------------------------------ cond-then
    (cp→ (conf (net (p (proc (if e (proc I_1 ...) P) I ...))) Σ)
@@ -597,7 +674,7 @@
             (r (proc (q ? z)))))
 
 (define-term Σ-ex-6-7
-  (put-var (cstore) p x 7))
+  (put-var (cstore) (p (x 7))))
 
 ;; (judgment-holds (cp→ (conf N-ex-6-7 Σ-ex-6-7) μ Conf) (μ Conf))
 
@@ -657,8 +734,8 @@
             (chor (Buyer → Seller [ko])))))
 
 (define-term Σ-ex-6-14
-  (put-var (put-var (cstore) Buyer title "My Choreographies")
-              Buyer address "Internet Street"))
+  (put-var (cstore)
+           (Buyer (title "My Choreographies") (address "Internet Street"))))
 
 ;; (judgment-holds (sl→ (conf C6-16 Σ-ex-6-14) μ (conf C Σ)) (C Σ μ))
 ;; (show-derivations (build-derivations (sl→ (conf C6-16 Σ-ex-6-14) μ (conf C Σ))))
@@ -718,7 +795,7 @@
          (p v → q)
          (conf
           (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...)))
-          (put-var Σ q x v)))]
+          (put-var Σ (q (x v)))))]
   [(split N M_1 M_2)
    (where (net _ _ ...) M_1)
    (where (net _ _ ...) M_2)
@@ -748,10 +825,10 @@
                            (proc (s ⊕ ko)))))))
 
 (define-term Σ-ex-6-17-1
-  (put-var (cstore) c creds "secret"))
+  (put-var (cstore) (c (creds "secret"))))
 
 (define-term Σ-ex-6-17-2
-  (put-var (cstore) c creds "wrong"))
+  (put-var (cstore) (c (creds "wrong"))))
 
 ;; (judgment-holds (slp→ (conf N-ex-6-15 Σ-ex-6-17-1) μ Conf) (μ Conf))
 ;; (show-derivations (build-derivations (slp→ (conf N-ex-6-15 Σ-ex-6-17-1) μ Conf)))
@@ -781,34 +858,6 @@
   ;; Configurations
   (Conf ::= (conf C Σ D)))
 
-(define-metafunction RecursiveChor
-  subst-p : p (p p) ... -> p
-  [(subst-p p (p_1 q_1) ... (p q) (p_2 q_2) ...) q]
-  [(subst-p p _ ...) p])
-
-(define-metafunction RecursiveChor
-  subst-i : I (p p) ... -> I
-  [(subst-i (p e → q x) (p_1 q_1) ...)
-   ((subst-p p (p_1 q_1) ...) e → (subst-p q (p_1 q_1) ...) x)]
-  [(subst-i (p x := e) (p_1 q_1) ...)
-   ((subst-p p (p_1 q_1) ...) x := e)]
-  [(subst-i (if (p e) (chor I_1 ...) (chor I_2 ...)) (p_1 q_1) ...)
-   (if ((subst-p p (p_1 q_1) ...) e)
-       (chor (subst-i I_1 (p_1 q_1) ...) ...)
-       (chor (subst-i I_2 (p_1 q_1) ...) ...))]
-  [(subst-i (p → q [l]) (p_1 q_1) ...)
-   ((subst-p p (p_1 q_1) ...) → (subst-p q (p_1 q_1) ...) [l])]
-  [(subst-i (X p ...) (p_1 q_1) ...)
-   (X (subst-p p (p_1 q_1) ...) ...)])
-
-(define-metafunction RecursiveChor
-  get-def : D X -> ((p ...) C)
-  [(get-def D X) ,(apply assoc-store (term (X D)))])
-
-(define-metafunction RecursiveChor
-  put-def : D (X p ...) C -> D
-  [(put-def D (X p ...) C) ,(apply put-store (term (X ((p ...) C) D)))])
-
 (define-judgment-form RecursiveChor
   #:mode (rc→ I O O)
   #:contract (rc→ Conf μ Conf)
@@ -816,12 +865,12 @@
    --------------------------------------------- local
    (rc→ (conf (chor (p x := e) I ...) Σ D)
         (τ @ p)
-        (conf (chor I ...) (put-var Σ p x v) D))]
+        (conf (chor I ...) (put-var Σ (p (x v))) D))]
   [(↓ (get-pstore Σ p) e v)
    --------------------------------------------- com
    (rc→ (conf (chor (p e → q x) I ...) Σ D)
         (p v → q)
-        (conf (chor I ...) (put-var Σ q x v) D))]
+        (conf (chor I ...) (put-var Σ (q (x v))) D))]
   [---------------------------------------- sel
    (rc→ (conf (chor (p → q [l]) I ...) Σ D)
         (p → q [l])
@@ -842,7 +891,7 @@
    (rc→ (conf (chor (X p ...) I ...) Σ D)
         (τ @ p_2)
         (conf (chor (enter (p_1 ... p_3 ...) (X p ...) (chor I ...))
-                    (subst-i I_1 (q p) ...) ...
+                    (subst I_1 (q p) ...) ...
                     I ...)
               Σ D))]
   [(where (q_1 ... q_2 q_3 ...) (q ...))
@@ -998,33 +1047,6 @@
   ;; Configurations
   (Conf ::= (conf N Σ D)))
 
-(define-metafunction RecursiveProc
-  rcp-subst-i : I (p p) ... -> I
-  [(rcp-subst-i (p ! e) (p_1 q_1) ...)
-   ((subst-p p (p_1 q_1) ...) ! e)]
-  [(rcp-subst-i (p ? x) (p_1 q_1) ...)
-   ((subst-p p (p_1 q_1) ...) ? x)]
-  [(rcp-subst-i (x := e) _ ...)
-   (x := e)]
-  [(rcp-subst-i (if e (proc I_1 ...) (proc I_2 ...)) (p_1 q_1) ...)
-   (if e
-       (proc (rcp-subst-i I_1 (p_1 q_1) ...) ...)
-       (proc (rcp-subst-i I_2 (p_1 q_1) ...) ...))]
-  [(rcp-subst-i (p ⊕ l) (p_1 q_1) ...)
-   ((subst-p p (p_1 q_1) ...) ⊕ l)]
-  [(rcp-subst-i (p & (l (proc I ...)) ...) (p_1 q_1) ...)
-   ((subst-p p (p_1 q_1) ...) & (l (proc (rcp-subst-i I (p_1 q_1)) ...)) ...)]
-  [(rcp-subst-i (X p ...) (p_1 q_1) ...)
-   (X (subst-p p (p_1 q_1) ...) ...)])
-
-(define-metafunction RecursiveProc
-  rcp-get-def : D X -> ((p ...) P)
-  [(rcp-get-def D X) ,(apply assoc-store (term (X D)))])
-
-(define-metafunction RecursiveProc
-  rcp-put-def : D (X p ...) P -> D
-  [(rcp-put-def D (X p ...) P) ,(apply put-store (term (X ((p ...) P) D)))])
-
 (define-overriding-judgment-form RecursiveProc slp→
   #:mode (rcp→ I O O)
   #:contract (rcp→ Conf μ Conf)
@@ -1035,7 +1057,7 @@
    -------------------------------------------------------- local
    (rcp→ (conf (net (p (proc (x := e) I ...))) Σ D)
          (τ @ p)
-         (conf (net (p (proc I ...))) (put-var Σ p x v) D))]
+         (conf (net (p (proc I ...))) (put-var Σ (p (x v))) D))]
   [(commute N (net (p (proc (q ⊕ l) I_1 ...))
                        (q (proc (p & (l_1 P_1) ...) I_2 ...))))
    (where (_ ... (l (proc I_3 ...)) _ ...) ((l_1 P_1) ...))
@@ -1052,7 +1074,7 @@
          (p v → q)
          (conf
           (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...)))
-          (put-var Σ q x v)
+          (put-var Σ (q (x v)))
           D))]
   [(↓ (get-pstore Σ p) e #t)
    --------------------------------------------------------------- cond-then
@@ -1064,11 +1086,11 @@
    (rcp→ (conf (net (p (proc (if e P (proc I_1 ...)) I ...))) Σ D)
          (τ @ p)
          (conf (net (p (proc I_1 ... I ...))) Σ D))]
-  [(where ((r ...) (proc I_1 ...)) (rcp-get-def D X))
+  [(where ((r ...) (proc I_1 ...)) (get-def D X))
    ------------------------------------------------------------------------ call
    (rcp→ (conf (net (p (proc (X q ...) I ...))) Σ D)
          (τ @ p)
-         (conf (net (p (proc (rcp-subst-i I_1 (r q) ...) ... I ...))) Σ D))]
+         (conf (net (p (proc (subst I_1 (r q) ...) ... I ...))) Σ D))]
   [(split N M_1 M_2)
    (where (net _ _ ...) M_1)
    (where (net _ _ ...) M_2)
@@ -1077,8 +1099,8 @@
    (rcp→ (conf N Σ_1 D) μ (conf (join M_2 M_3) Σ_2 D))])
 
 (define-term D-ex-7-13
-  (rcp-put-def (rcp-put-def (dstore) (PP_1 q) (proc (q ⊕ sig) (PP_2 q)))
-               (PP_2 p) (proc (p & (sig (proc (PP_1 p)))))))
+  (put-def (put-def (dstore) (PP_1 q) (proc (q ⊕ sig) (PP_2 q)))
+           (PP_2 p) (proc (p & (sig (proc (PP_1 p)))))))
 
 (define-term N-ex-7-13
   (put-proc (net)
@@ -1091,7 +1113,7 @@
 ;; (judgment-holds (rcp→ (conf
 ;;                        (put-proc (net) (p (proc (X p))))
 ;;                        (cstore)
-;;                        (rcp-put-def (dstore) (X p) (proc (X p))))
+;;                        (put-def (dstore) (X p) (proc (X p))))
 ;;                       μ Conf) (μ Conf))
 
 ;; (judgment-holds (rcp→ (conf N-ex-7-13 (cstore) D-ex-7-13) μ Conf) (μ Conf))
