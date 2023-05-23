@@ -176,6 +176,10 @@
    (put-proc ,(apply put-store (term (p P N))) (q Q) ...)])
 
 (define-metafunction Util
+  make-net : (p P) ... -> N
+  [(make-net (p P) ...) (put-proc (net) (p P) ...)])
+
+(define-metafunction Util
   get-pstore : Σ p -> σ
   [(get-pstore Σ p) ,(apply assoc-store (term (p Σ (pstore))))])
 
@@ -202,12 +206,23 @@
    (put-var (put-var* Σ p (x v) ...) (p_1 (x_1 v_1) ...) ...)])
 
 (define-metafunction Util
+  make-cstore : (p (x v) ...) ... -> Σ
+  [(make-cstore (p (x v) ...) ...) (put-var (cstore) (p (x v) ...) ...)])
+
+(define-metafunction Util
   get-def : D X -> ((p ...) CP)
   [(get-def D X) ,(apply assoc-store (term (X D)))])
 
 (define-metafunction Util
-  put-def : D (X p ...) CP -> D
-  [(put-def D (X p ...) CP) ,(apply put-store (term (X ((p ...) CP) D)))])
+  put-def : D ((X p ...) CP) ... -> D
+  [(put-def D) D]
+  [(put-def D ((X p ...) CP) ((X_1 p_1 ...) CP_1) ...)
+   (put-def ,(apply put-store (term (X ((p ...) CP) D)))
+            ((X_1 p_1 ...) CP_1) ...)])
+
+(define-metafunction Util
+  make-defs : ((X p ...) CP) ... -> D
+  [(make-defs ((X p ...) CP) ...) (put-def (defs) ((X p ...) CP) ...)])
 
 ;;; ** Evaluation
 
@@ -383,7 +398,7 @@
   #:contract (sp→ N μ N)
   [(commute N (net (p (proc (q !) I_1 ...)) (q (proc (p ?) I_2 ...))))
    ---------------------------------------------------------------------- com
-   (sp→ N (p → q) (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...))))]
+   (sp→ N (p → q) (make-net (p (proc I_1 ...)) (q (proc I_2 ...))))]
   [(split N M_1 M_2)
    (where (net _ _ ...) M_1)
    (where (net _ _ ...) M_2)
@@ -470,7 +485,7 @@
         (Seller (catalogue x) → Buyer price)))
 
 (define-term Σ5-6
-  (put-var (cstore) (Buyer (title "My Choreographies"))))
+  (make-cstore (Buyer (title "My Choreographies"))))
 
 ;; (judgment-holds (st→ (conf C5-6 Σ5-6) μ (conf C Σ)) (C Σ μ))
 ;; (judgment-holds (st→ (conf (chor (r y := 4)) (cstore)) μ (conf C Σ)) (C Σ μ))
@@ -525,7 +540,7 @@
    (stp→ (conf N Σ)
          (p v → q)
          (conf
-          (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...)))
+          (make-net (p (proc I_1 ...)) (q (proc I_2 ...)))
           (put-var Σ (q (x v)))))]
   [(split N M_1 M_2)
    (where (net _ _ ...) M_1)
@@ -534,20 +549,18 @@
    --------------------------------------------------- par
    (stp→ (conf N Σ_1) μ (conf (join M_2 M_3) Σ_2))])
 
-;; (judgment-holds (stp→ (conf (put-proc (net) (p (proc (x := 6)))) (cstore)) μ Conf) (μ Conf))
+;; (judgment-holds (stp→ (conf (make-net (p (proc (x := 6)))) (cstore)) μ Conf) (μ Conf))
 
 (define-term N-ex-5-6
-  (put-proc (net)
-            (Buyer (proc (Seller ! title) (Seller ? price)))
+  (make-net (Buyer (proc (Seller ! title) (Seller ? price)))
             (Seller (proc (Buyer ? x) (Buyer ! (catalogue x))))))
 
-;; (judgment-holds (stp→ (conf N-ex-5-6 (put-var (cstore) (Buyer (title "My Choreographies")))) μ Conf) (μ Conf))
+;; (judgment-holds (stp→ (conf N-ex-5-6 (make-cstore (Buyer (title "My Choreographies")))) μ Conf) (μ Conf))
 
 (define modpow modular-expt)
 
 (define-term N-ex-5-7
-  (put-proc (net)
-            (Alice (proc (Bob ! (modpow g a p))
+  (make-net (Alice (proc (Bob ! (modpow g a p))
                          (Bob ? y)
                          (s := (modpow y a p))))
             (Bob (proc (Alice ? x)
@@ -555,9 +568,8 @@
                        (s := (modpow x b p))))))
 
 (define-term Σ-ex-5-7
-  (put-var (cstore)
-           (Alice (p 23) (g 5) (a ,(random 10)))
-           (Bob (p 23) (g 5) (b ,(random 10)))))
+  (make-cstore (Alice (p 23) (g 5) (a ,(random 10)))
+               (Bob (p 23) (g 5) (b ,(random 10)))))
 
 ;; (judgment-holds (stp→ (conf N-ex-5-7 Σ-ex-5-7) μ Conf) (μ Conf))
 
@@ -612,7 +624,7 @@
             (chor (q y := #t)))))
 
 (define-term Σ6-2
-  (put-var (cstore) (p (x 5)) (q (y #t))))
+  (make-cstore (p (x 5)) (q (y #t))))
 
 ;; (judgment-holds (cc→ (conf C6-2 Σ6-2) μ (conf C Σ)) (C Σ μ))
 ;; (show-derivations (build-derivations (cc→ (conf C6-2 Σ6-2) μ (conf C Σ))))
@@ -644,7 +656,7 @@
    (cp→ (conf N Σ)
         (p v → q)
         (conf
-         (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...)))
+         (make-net (p (proc I_1 ...)) (q (proc I_2 ...)))
          (put-var Σ (q (x v)))))]
   [(↓ (get-pstore Σ p) e #t)
    ------------------------------------------------------------ cond-then
@@ -664,15 +676,14 @@
    (cp→ (conf N Σ_1) μ (conf (join M_2 M_3) Σ_2))])
 
 (define-term N-ex-6-7
-  (put-proc (net)
-            (p (proc (if (< x 10)
+  (make-net (p (proc (if (< x 10)
                          (proc (x := (+ x 1)))
                          (proc))))
             (q (proc (y := #t) (r ! y)))
             (r (proc (q ? z)))))
 
 (define-term Σ-ex-6-7
-  (put-var (cstore) (p (x 7))))
+  (make-cstore (p (x 7))))
 
 ;; (judgment-holds (cp→ (conf N-ex-6-7 Σ-ex-6-7) μ Conf) (μ Conf))
 
@@ -732,8 +743,8 @@
             (chor (Buyer → Seller [ko])))))
 
 (define-term Σ-ex-6-14
-  (put-var (cstore)
-           (Buyer (title "My Choreographies") (address "Internet Street"))))
+  (make-cstore (Buyer (title "My Choreographies")
+                      (address "Internet Street"))))
 
 ;; (judgment-holds (sl→ (conf C6-16 Σ-ex-6-14) μ (conf C Σ)) (C Σ μ))
 ;; (show-derivations (build-derivations (sl→ (conf C6-16 Σ-ex-6-14) μ (conf C Σ))))
@@ -777,23 +788,19 @@
   #:mode (slp→ I O O)
   #:contract (slp→ Conf μ Conf)
   [(commute N (net (p (proc (q ⊕ l) I_1 ...))
-                       (q (proc (p & (l_1 P_1) ...) I_2 ...))))
+                   (q (proc (p & (l_1 P_1) ...) I_2 ...))))
    (where (_ ... (l (proc I_3 ...)) _ ...) ((l_1 P_1) ...))
    ------------------------------------------------------------------- sel
    (slp→ (conf N Σ)
          (p → q [l])
-         (conf (put-proc (net)
-                         (p (proc I_1 ...))
-                         (q (proc I_3 ... I_2 ...)))
-               Σ))]
+         (conf (make-net (p (proc I_1 ...)) (q (proc I_3 ... I_2 ...))) Σ))]
   [(commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
    (↓ (get-pstore Σ p) e v)
    ---------------------------------------------------------------------------- com
    (slp→ (conf N Σ)
          (p v → q)
-         (conf
-          (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...)))
-          (put-var Σ (q (x v)))))]
+         (conf (make-net (p (proc I_1 ...)) (q (proc I_2 ...)))
+               (put-var Σ (q (x v)))))]
   [(split N M_1 M_2)
    (where (net _ _ ...) M_1)
    (where (net _ _ ...) M_2)
@@ -808,8 +815,7 @@
   "totally-unique-token")
 
 (define-term N-ex-6-15
-  (put-proc (net)
-            (c (proc (cas ! creds)
+  (make-net (c (proc (cas ! creds)
                      (s &
                         (token (proc (s ? t)))
                         (error (proc)))))
@@ -823,10 +829,10 @@
                            (proc (s ⊕ ko)))))))
 
 (define-term Σ-ex-6-17-1
-  (put-var (cstore) (c (creds "secret"))))
+  (make-cstore (c (creds "secret"))))
 
 (define-term Σ-ex-6-17-2
-  (put-var (cstore) (c (creds "wrong"))))
+  (make-cstore (c (creds "wrong"))))
 
 ;; (judgment-holds (slp→ (conf N-ex-6-15 Σ-ex-6-17-1) μ Conf) (μ Conf))
 ;; (show-derivations (build-derivations (slp→ (conf N-ex-6-15 Σ-ex-6-17-1) μ Conf)))
@@ -926,7 +932,7 @@
   (chor (Ping Alice Bob)))
 
 (define-term D-ping
-  (put-def (defs) (Ping p q) (chor (p → q [sig]) (Ping p q))))
+  (make-defs ((Ping p q) (chor (p → q [sig]) (Ping p q)))))
 
 ;; (traces RecursiveChor-> (term (conf C-ping (cstore) D-ping)))
 
@@ -934,7 +940,7 @@
   (chor (Alice → Bob [sig]) (PP Alice Bob)))
 
 (define-term D-ping-pong
-  (put-def (defs) (PP p q) (chor (p → q [sig]) (PP q p))))
+  (make-defs ((PP p q) (chor (p → q [sig]) (PP q p)))))
 
 ;; (traces RecursiveChor-> (term (conf C-ping-pong (cstore) D-ping-pong)))
 
@@ -960,15 +966,14 @@
         (downloader ok := (equal? (crc file) crc-orig))))
 
 (define-term D7-2
-  (put-def (defs)
-           (S c s)
-           (chor (if (s (<= n (packets file)))
-                     (chor (s → c [next])
-                           (s (make-packet file n) → c packet)
-                           (c file := (append file packet))
-                           (s n := (+ n 1))
-                           (S c s))
-                     (chor (s → c [end]))))))
+  (make-defs ((S c s)
+              (chor (if (s (<= n (packets file)))
+                        (chor (s → c [next])
+                              (s (make-packet file n) → c packet)
+                              (c file := (append file packet))
+                              (s n := (+ n 1))
+                              (S c s))
+                        (chor (s → c [end])))))))
 
 ;; (traces RecursiveChor-> (term (conf C7-2 (cstore) D7-2)))
 
@@ -1057,23 +1062,20 @@
          (τ @ p)
          (conf (net (p (proc I ...))) (put-var Σ (p (x v))) D))]
   [(commute N (net (p (proc (q ⊕ l) I_1 ...))
-                       (q (proc (p & (l_1 P_1) ...) I_2 ...))))
+                   (q (proc (p & (l_1 P_1) ...) I_2 ...))))
    (where (_ ... (l (proc I_3 ...)) _ ...) ((l_1 P_1) ...))
    --------------------------------------------------------------------- sel
    (rcp→ (conf N Σ D)
          (p → q [l])
-         (conf (put-proc
-                (net) (p (proc I_1 ...)) (q (proc I_3 ... I_2 ...)))
-               Σ D))]
+         (conf (make-net (p (proc I_1 ...)) (q (proc I_3 ... I_2 ...))) Σ D))]
   [(commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
    (↓ (get-pstore Σ p) e v)
    ---------------------------------------------------------------------------- com
    (rcp→ (conf N Σ D)
          (p v → q)
-         (conf
-          (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...)))
-          (put-var Σ (q (x v)))
-          D))]
+         (conf (make-net (p (proc I_1 ...)) (q (proc I_2 ...)))
+               (put-var Σ (q (x v)))
+               D))]
   [(↓ (get-pstore Σ p) e #t)
    --------------------------------------------------------------- cond-then
    (rcp→ (conf (net (p (proc (if e (proc I_1 ...) P) I ...))) Σ D)
@@ -1097,21 +1099,18 @@
    (rcp→ (conf N Σ_1 D) μ (conf (join M_2 M_3) Σ_2 D))])
 
 (define-term D-ex-7-13
-  (put-def (put-def (defs) (PP_1 q) (proc (q ⊕ sig) (PP_2 q)))
-           (PP_2 p) (proc (p & (sig (proc (PP_1 p)))))))
+  (make-defs ((PP_1 q) (proc (q ⊕ sig) (PP_2 q)))
+             ((PP_2 p) (proc (p & (sig (proc (PP_1 p))))))))
 
 (define-term N-ex-7-13
-  (put-proc (net)
-            (Alice (proc (PP_1 Bob)))
-            (Bob (proc (PP_2 Alice)))))
+  (make-net (Alice (proc (PP_1 Bob))) (Bob (proc (PP_2 Alice)))))
 
 ;; (judgment-holds (rcp→ (conf N-ex-6-15 Σ-ex-6-17-1 (defs)) μ Conf) (μ Conf))
 ;; (show-derivations (build-derivations (rcp→ (conf N-ex-6-15 Σ-ex-6-17-1 (defs)) μ Conf)))
 
-;; (judgment-holds (rcp→ (conf
-;;                        (put-proc (net) (p (proc (X p))))
-;;                        (cstore)
-;;                        (put-def (defs) (X p) (proc (X p))))
+;; (judgment-holds (rcp→ (conf (make-net (p (proc (X p))))
+;;                             (cstore)
+;;                             (make-defs ((X p) (proc (X p)))))
 ;;                       μ Conf) (μ Conf))
 
 ;; (judgment-holds (rcp→ (conf N-ex-7-13 (cstore) D-ex-7-13) μ Conf) (μ Conf))
