@@ -50,7 +50,8 @@
 ;; - Add `r` as another role non-terminal to the chor languages to simplify
 ;;   things.
 ;;
-;; - Document sorting behavior.
+;; - Document sorting behavior. E.g. "join" assumes that the networks are sorted
+;;   when joining them together.
 ;;
 ;; - Implement variadic versions of the "put" metafunctions for convenience.
 ;;
@@ -97,11 +98,11 @@
 
 (define-language Util
   (id ::= variable-not-otherwise-mentioned)
-  (p q l X ::= id)
+  (p q r l X ::= id)
   (e x v I ::= any)
   (C ::= (chor I ...))
-  (P Q ::= (proc I ...))
-  (N ::= (net (p P) ...)))
+  (P Q R ::= (proc I ...))
+  (N M ::= (net (p P) ...)))
 
 (define-metafunction Util
   pn : any -> (any ...)
@@ -149,6 +150,43 @@
   [(put-proc N) N]
   [(put-proc N (p P) (q Q) ...)
    (put-proc ,(apply put-store (term (p P N))) (q Q) ...)])
+
+(define-judgment-form Util
+  #:mode (commute I O)
+  #:contract (commute N N)
+  [--------------------------------------------- id
+   (commute (net (p P) (q Q)) (net (p P) (q Q)))]
+  [--------------------------------------------- commute
+   (commute (net (p P) (q Q)) (net (q Q) (p P)))])
+
+(define-judgment-form Util
+  #:mode (split I O O)
+  #:contract (split N M M)
+  [------------------------------------- done-left
+   (split (net (p P)) (net (p P)) (net))]
+  [------------------------------------- done-right
+   (split (net (p P)) (net) (net (p P)))]
+  [(split (net (q Q) ...) (net (r_1 R_1) ...) (net (r_2 R_2) ...))
+   --------------------------------------------------------------------------- left
+   (split (net (p P) (q Q) ...) (net (p P) (r_1 R_1) ...) (net (r_2 R_2) ...))]
+  [(split (net (q Q) ...) (net (r_1 R_1) ...) (net (r_2 R_2) ...))
+   --------------------------------------------------------------------------- right
+   (split (net (p P) (q Q) ...) (net (r_1 R_1) ...) (net (p P) (r_2 R_2) ...))])
+
+(define-metafunction Util
+  join : N N -> N
+  [(join (net) N) N]
+  [(join N (net)) N]
+  [(join (net (p P) (p_1 P_1) ...) (net (q Q) (q_1 Q_1) ...))
+   (net (p P) (r R) ...)
+   (side-condition (symbol<? (term p) (term q)))
+   (where (net (r R) ...)
+          (join (net (p_1 P_1) ...) (net (q Q) (q_1 Q_1) ...)))]
+  [(join (net (p P) (p_1 P_1) ...) (net (q Q) (q_1 Q_1) ...))
+   (net (q Q) (r R) ...)
+   (side-condition (symbol<? (term q) (term p)))
+   (where (net (r R) ...)
+          (join (net (p P) (p_1 P_1) ...) (net (q_1 Q_1) ...)))])
 
 ;;; SimpleChor
 
@@ -205,82 +243,34 @@
   ;; Transitions
   (μ ::= (p → q)))
 
-;; (define-judgment-form SimpleProc
-;;   #:mode (sp-pick I O O O)
-;;   #:contract (sp-pick N (p P) (p P) ((p P) ...))
-;;   [-------------------------------------------------------------------- pick
-;;    (sp-pick (net (r_1 R_1) ... (p P) (r_2 R_2) ... (q Q) (r_3 R_3) ...)
-;;             (p P) (q Q) ((r_1 R_1) ... (r_2 R_2) ... (r_3 R_3) ...))])
-
-(define-judgment-form SimpleProc
-  #:mode (sp-commute I O)
-  #:contract (sp-commute N N)
-  [------------------------------------------------ id
-   (sp-commute (net (p P) (q Q)) (net (p P) (q Q)))]
-  [------------------------------------------------ commute
-   (sp-commute (net (p P) (q Q)) (net (q Q) (p P)))])
-
-(define-judgment-form SimpleProc
-  #:mode (sp-split I O O)
-  #:contract (sp-split N M M)
-  [---------------------------------------- done-left
-   (sp-split (net (p P)) (net (p P)) (net))]
-  [---------------------------------------- done-right
-   (sp-split (net (p P)) (net) (net (p P)))]
-  [(sp-split (net (q Q) ...) (net (r_1 R_1) ...) (net (r_2 R_2) ...))
-   ------------------------------------------------------------------------------ left
-   (sp-split (net (p P) (q Q) ...) (net (p P) (r_1 R_1) ...) (net (r_2 R_2) ...))]
-  [(sp-split (net (q Q) ...) (net (r_1 R_1) ...) (net (r_2 R_2) ...))
-   ------------------------------------------------------------------------------ right
-   (sp-split (net (p P) (q Q) ...) (net (r_1 R_1) ...) (net (p P) (r_2 R_2) ...))])
-
-(define-metafunction SimpleProc
-  sp-join : N N -> N
-  [(sp-join (net) N) N]
-  [(sp-join N (net)) N]
-  [(sp-join (net (p P) (p_1 P_1) ...) (net (q Q) (q_1 Q_1) ...))
-   (net (p P) (r R) ...)
-   (side-condition (symbol<? (term p) (term q)))
-   (where (net (r R) ...)
-          (sp-join (net (p_1 P_1) ...) (net (q Q) (q_1 Q_1) ...)))]
-  [(sp-join (net (p P) (p_1 P_1) ...) (net (q Q) (q_1 Q_1) ...))
-   (net (q Q) (r R) ...)
-   (side-condition (symbol<? (term q) (term p)))
-   (where (net (r R) ...)
-          (sp-join (net (p P) (p_1 P_1) ...) (net (q_1 Q_1) ...)))])
-
 (define-judgment-form SimpleProc
   #:mode (sp→ I O O)
   #:contract (sp→ N μ N)
-  [(sp-commute N (net (p (proc (q !) I_1 ...)) (q (proc (p ?) I_2 ...))))
+  [(commute N (net (p (proc (q !) I_1 ...)) (q (proc (p ?) I_2 ...))))
    ---------------------------------------------------------------------- com
    (sp→ N (p → q) (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...))))]
-  [(sp-split N M_1 M_2)
+  [(split N M_1 M_2)
    (where (net _ _ ...) M_1)
    (where (net _ _ ...) M_2)
    (sp→ M_1 μ M_3)
    --------------------------- par
-   (sp→ N μ (sp-join M_2 M_3))])
+   (sp→ N μ (join M_2 M_3))])
 
 (define-term N3-1
   (net (Client (proc (Gateway !)))
        (Gateway (proc (Client ?) (Server !)))
        (Server (proc (Gateway ?)))))
 
-;; (judgment-holds (sp-pick (net) any_1 any_2 any_3) (any_1 any_2 any_3))
-;; (judgment-holds (sp-split (net) M_1 M_2) (M_1 M_2))
+;; (judgment-holds (split (net) M_1 M_2) (M_1 M_2))
 ;; (judgment-holds (sp→ (net) μ N) (μ N))
 
-;; (judgment-holds (sp-pick (net (p (proc (q !)))) any_1 any_2 any_3) (any_1 any_2 any_3))
-;; (judgment-holds (sp-split (net (p (proc (q !)))) M_1 M_2) (M_1 M_2))
+;; (judgment-holds (split (net (p (proc (q !)))) M_1 M_2) (M_1 M_2))
 ;; (judgment-holds (sp→ (net (p (proc (q !)))) μ N) (μ N))
 
-;; (judgment-holds (sp-pick (net (p (proc (q !))) (q (proc (p ?)))) any_1 any_2 any_3) (any_1 any_2 any_3))
-;; (judgment-holds (sp-split (net (p (proc (q !))) (q (proc (p ?)))) M_1 M_2) (M_1 M_2))
+;; (judgment-holds (split (net (p (proc (q !))) (q (proc (p ?)))) M_1 M_2) (M_1 M_2))
 ;; (judgment-holds (sp→ (net (p (proc (q !))) (q (proc (p ?)))) μ M) (μ M))
 
-;; (judgment-holds (sp-pick N3-1 any_1 any_2 any_3) (any_1 any_2 any_3))
-;; (judgment-holds (sp-split N3-1 M_1 M_2) (M_1 M_2))
+;; (judgment-holds (split N3-1 M_1 M_2) (M_1 M_2))
 ;; (judgment-holds (sp→ N3-1 μ M) (μ M))
 ;; (show-derivations (build-derivations (sp→ N3-1 μ M)))
 
@@ -444,21 +434,6 @@
   ;; Configurations
   (Conf ::= (conf N Σ)))
 
-;; (define-overriding-judgment-form StatefulProc sp-pick
-;;   #:mode (stp-pick I O O O)
-;;   #:contract (stp-pick N (p P) (p P) ((p P) ...)))
-
-(define-overriding-judgment-form StatefulProc sp-commute
-  #:mode (stp-commute I O)
-  #:contract (stp-commute N N))
-
-(define-overriding-judgment-form StatefulProc sp-split
-  #:mode (stp-split I O O)
-  #:contract (stp-split N N N))
-
-(define-metafunction/extension sp-join StatefulProc
-  stp-join : N N -> N)
-
 (define-judgment-form StatefulProc
   #:mode (stp→ I O O)
   #:contract (stp→ Conf μ Conf)
@@ -467,7 +442,7 @@
    (stp→ (conf (net (p (proc (x := e) I ...))) Σ)
          (τ @ p)
          (conf (net (p (proc I ...))) (put-var Σ p x v)))]
-  [(stp-commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
+  [(commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
    (↓ (get-pstore Σ p) e v)
    ---------------------------------------------------------------------------- com
    (stp→ (conf N Σ)
@@ -475,12 +450,12 @@
          (conf
           (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...)))
           (put-var Σ q x v)))]
-  [(stp-split N M_1 M_2)
+  [(split N M_1 M_2)
    (where (net _ _ ...) M_1)
    (where (net _ _ ...) M_2)
    (stp→ (conf M_1 Σ_1) μ (conf M_3 Σ_2))
    --------------------------------------------------- par
-   (stp→ (conf N Σ_1) μ (conf (stp-join M_2 M_3) Σ_2))])
+   (stp→ (conf N Σ_1) μ (conf (join M_2 M_3) Σ_2))])
 
 ;; (judgment-holds (stp→ (conf (put-proc (net) (p (proc (x := 6)))) (cstore)) μ Conf) (μ Conf))
 
@@ -585,21 +560,10 @@
      ....
      (if e P Q)))
 
-(define-overriding-judgment-form ConditionalProc stp-commute
-  #:mode (cp-commute I O)
-  #:contract (cp-commute N N))
-
-(define-overriding-judgment-form ConditionalProc stp-split
-  #:mode (cp-split I O O)
-  #:contract (cp-split N N N))
-
-(define-metafunction/extension stp-join ConditionalProc
-  cp-join : N N -> N)
-
 (define-overriding-judgment-form ConditionalProc stp→
   #:mode (cp→ I O O)
   #:contract (cp→ Conf μ Conf)
-  [(cp-commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
+  [(commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
    (↓ (get-pstore Σ p) e v)
    -------------------------------------------------------------------------- com
    (cp→ (conf N Σ)
@@ -617,12 +581,12 @@
    (cp→ (conf (net (p (proc (if e P (proc I_1 ...)) I ...))) Σ)
         (τ @ p)
         (conf (net (p (proc I_1 ... I ...))) Σ))]
-  [(cp-split N M_1 M_2)
+  [(split N M_1 M_2)
    (where (net _ _ ...) M_1)
    (where (net _ _ ...) M_2)
    (cp→ (conf M_1 Σ_1) μ (conf M_3 Σ_2))
    ------------------------------------------------- par
-   (cp→ (conf N Σ_1) μ (conf (cp-join M_2 M_3) Σ_2))])
+   (cp→ (conf N Σ_1) μ (conf (join M_2 M_3) Σ_2))])
 
 (define-term N-ex-6-7
   (put-proc (net)
@@ -734,21 +698,10 @@
      ....
      (p → q [l])))
 
-(define-overriding-judgment-form SelectiveProc cp-commute
-  #:mode (slp-commute I O)
-  #:contract (slp-commute N N))
-
-(define-overriding-judgment-form SelectiveProc cp-split
-  #:mode (slp-split I O O)
-  #:contract (slp-split N N N))
-
-(define-metafunction/extension cp-join SelectiveProc
-  slp-join : N N -> N)
-
 (define-overriding-judgment-form SelectiveProc cp→
   #:mode (slp→ I O O)
   #:contract (slp→ Conf μ Conf)
-  [(slp-commute N (net (p (proc (q ⊕ l) I_1 ...))
+  [(commute N (net (p (proc (q ⊕ l) I_1 ...))
                        (q (proc (p & (l_1 P_1) ...) I_2 ...))))
    (where (_ ... (l (proc I_3 ...)) _ ...) ((l_1 P_1) ...))
    ------------------------------------------------------------------- sel
@@ -758,7 +711,7 @@
                          (p (proc I_1 ...))
                          (q (proc I_3 ... I_2 ...)))
                Σ))]
-  [(slp-commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
+  [(commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
    (↓ (get-pstore Σ p) e v)
    ---------------------------------------------------------------------------- com
    (slp→ (conf N Σ)
@@ -766,12 +719,12 @@
          (conf
           (put-proc (net) (p (proc I_1 ...)) (q (proc I_2 ...)))
           (put-var Σ q x v)))]
-  [(slp-split N M_1 M_2)
+  [(split N M_1 M_2)
    (where (net _ _ ...) M_1)
    (where (net _ _ ...) M_2)
    (slp→ (conf M_1 Σ_1) μ (conf M_3 Σ_2))
    --------------------------------------------------- par
-   (slp→ (conf N Σ_1) μ (conf (slp-join M_2 M_3) Σ_2))])
+   (slp→ (conf N Σ_1) μ (conf (join M_2 M_3) Σ_2))])
 
 (define (valid-creds? creds)
   (equal? creds "secret"))
@@ -1045,17 +998,6 @@
   ;; Configurations
   (Conf ::= (conf N Σ D)))
 
-(define-overriding-judgment-form RecursiveProc slp-commute
-  #:mode (rcp-commute I O)
-  #:contract (rcp-commute N N))
-
-(define-overriding-judgment-form RecursiveProc slp-split
-  #:mode (rcp-split I O O)
-  #:contract (rcp-split N N N))
-
-(define-metafunction/extension slp-join RecursiveProc
-  rcp-join : N N -> N)
-
 (define-metafunction RecursiveProc
   rcp-subst-i : I (p p) ... -> I
   [(rcp-subst-i (p ! e) (p_1 q_1) ...)
@@ -1094,7 +1036,7 @@
    (rcp→ (conf (net (p (proc (x := e) I ...))) Σ D)
          (τ @ p)
          (conf (net (p (proc I ...))) (put-var Σ p x v) D))]
-  [(rcp-commute N (net (p (proc (q ⊕ l) I_1 ...))
+  [(commute N (net (p (proc (q ⊕ l) I_1 ...))
                        (q (proc (p & (l_1 P_1) ...) I_2 ...))))
    (where (_ ... (l (proc I_3 ...)) _ ...) ((l_1 P_1) ...))
    --------------------------------------------------------------------- sel
@@ -1103,7 +1045,7 @@
          (conf (put-proc
                 (net) (p (proc I_1 ...)) (q (proc I_3 ... I_2 ...)))
                Σ D))]
-  [(rcp-commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
+  [(commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
    (↓ (get-pstore Σ p) e v)
    ---------------------------------------------------------------------------- com
    (rcp→ (conf N Σ D)
@@ -1127,12 +1069,12 @@
    (rcp→ (conf (net (p (proc (X q ...) I ...))) Σ D)
          (τ @ p)
          (conf (net (p (proc (rcp-subst-i I_1 (r q) ...) ... I ...))) Σ D))]
-  [(rcp-split N M_1 M_2)
+  [(split N M_1 M_2)
    (where (net _ _ ...) M_1)
    (where (net _ _ ...) M_2)
    (rcp→ (conf M_1 Σ_1 D) μ (conf M_3 Σ_2 D))
    ------------------------------------------------------- par
-   (rcp→ (conf N Σ_1 D) μ (conf (rcp-join M_2 M_3) Σ_2 D))])
+   (rcp→ (conf N Σ_1 D) μ (conf (join M_2 M_3) Σ_2 D))])
 
 (define-term D-ex-7-13
   (rcp-put-def (rcp-put-def (dstore) (PP_1 q) (proc (q ⊕ sig) (PP_2 q)))
