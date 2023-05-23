@@ -10,7 +10,7 @@
 ;; - "chor" -- choreography
 ;; - "cstore" -- choreographic store
 ;; - "pstore" -- process store
-;; - "dstore" -- set of definitions (procedures)
+;; - "defs" -- set of definitions (procedures)
 ;; - "def" -- definition (procedure)
 ;; - "conf" -- configuration
 ;;
@@ -67,8 +67,6 @@
 ;;
 ;; - Pull out expression language into a common thing.
 ;;
-;; - Rename "dstore" to "defs"?
-;;
 ;; - Document that we don't allow symbols or lists as values in expressions.
 
 ;;; * Util
@@ -122,7 +120,7 @@
   ;; Recursive
   (X ::= id)
   (CP ::= C P)
-  (D ::= (dstore (X ((p ...) CP)) ...)))
+  (D ::= (defs (X ((p ...) CP)) ...)))
 
 ;;; ** Process Names
 
@@ -162,13 +160,13 @@
 
 (define (assoc-store k store [default (void)])
   (match store
-    [`(,(or 'cstore 'pstore 'dstore 'net) . ,alist)
+    [`(,(or 'cstore 'pstore 'defs 'net) . ,alist)
      (let ([v (assoc k alist)])
        (if v (second v) default))]))
 
 (define (put-store k v store)
   (match store
-    [`(,(and store (or 'cstore 'pstore 'dstore 'net)) . ,alist)
+    [`(,(and store (or 'cstore 'pstore 'defs 'net)) . ,alist)
      `(,store ,@(aput k (list v) alist #:less? symbol<?))]))
 
 (define-metafunction Util
@@ -849,7 +847,7 @@
 (define-extended-language RecursiveChor SelectiveChor
   ;; Definitions
   (X ::= id)
-  (D ::= (dstore (X ((p ...) C)) ...))
+  (D ::= (defs (X ((p ...) C)) ...))
   ;; Choreographies
   (I ::=
      ....
@@ -928,7 +926,7 @@
   (chor (Ping Alice Bob)))
 
 (define-term D-ping
-  (put-def (dstore) (Ping p q) (chor (p → q [sig]) (Ping p q))))
+  (put-def (defs) (Ping p q) (chor (p → q [sig]) (Ping p q))))
 
 ;; (traces RecursiveChor-> (term (conf C-ping (cstore) D-ping)))
 
@@ -936,7 +934,7 @@
   (chor (Alice → Bob [sig]) (PP Alice Bob)))
 
 (define-term D-ping-pong
-  (put-def (dstore) (PP p q) (chor (p → q [sig]) (PP q p))))
+  (put-def (defs) (PP p q) (chor (p → q [sig]) (PP q p))))
 
 ;; (traces RecursiveChor-> (term (conf C-ping-pong (cstore) D-ping-pong)))
 
@@ -962,7 +960,7 @@
         (downloader ok := (equal? (crc file) crc-orig))))
 
 (define-term D7-2
-  (put-def (dstore)
+  (put-def (defs)
            (S c s)
            (chor (if (s (<= n (packets file)))
                      (chor (s → c [next])
@@ -1019,7 +1017,7 @@
    (side-condition ,(andmap (compose (partial < 1) length)
                             (term ((q ...) ...))))
    ---------------------------------------------------------------------------
-   (rc-wf-d (name D (dstore (X ((q ...) C)) ...)) ((X (p ...)) ...))])
+   (rc-wf-d (name D (defs (X ((q ...) C)) ...)) ((X (p ...)) ...))])
 
 (define-judgment-form RecursiveChor
   #:mode (rc-wf-f I O)
@@ -1031,7 +1029,7 @@
 
 ;; (judgment-holds (rc-wf-c D-ping any C-ping) any)
 ;; (judgment-holds (rc-wf-d D-ping any) any)
-;; (judgment-holds (rc-wf-d (dstore (X ((p) (chor (p x := e))))) any) any)
+;; (judgment-holds (rc-wf-d (defs (X ((p) (chor (p x := e))))) any) any)
 ;; (judgment-holds (rc-wf-f (conf C-ping (cstore) D-ping) any) any)
 
 ;;; RecursiveProc
@@ -1039,7 +1037,7 @@
 (define-extended-language RecursiveProc SelectiveProc
   ;; Definitions
   (X ::= id)
-  (D ::= (dstore (X ((p ...) P)) ...))
+  (D ::= (defs (X ((p ...) P)) ...))
   ;; Processes
   (I ::=
      ....
@@ -1099,7 +1097,7 @@
    (rcp→ (conf N Σ_1 D) μ (conf (join M_2 M_3) Σ_2 D))])
 
 (define-term D-ex-7-13
-  (put-def (put-def (dstore) (PP_1 q) (proc (q ⊕ sig) (PP_2 q)))
+  (put-def (put-def (defs) (PP_1 q) (proc (q ⊕ sig) (PP_2 q)))
            (PP_2 p) (proc (p & (sig (proc (PP_1 p)))))))
 
 (define-term N-ex-7-13
@@ -1107,13 +1105,13 @@
             (Alice (proc (PP_1 Bob)))
             (Bob (proc (PP_2 Alice)))))
 
-;; (judgment-holds (rcp→ (conf N-ex-6-15 Σ-ex-6-17-1 (dstore)) μ Conf) (μ Conf))
-;; (show-derivations (build-derivations (rcp→ (conf N-ex-6-15 Σ-ex-6-17-1 (dstore)) μ Conf)))
+;; (judgment-holds (rcp→ (conf N-ex-6-15 Σ-ex-6-17-1 (defs)) μ Conf) (μ Conf))
+;; (show-derivations (build-derivations (rcp→ (conf N-ex-6-15 Σ-ex-6-17-1 (defs)) μ Conf)))
 
 ;; (judgment-holds (rcp→ (conf
 ;;                        (put-proc (net) (p (proc (X p))))
 ;;                        (cstore)
-;;                        (put-def (dstore) (X p) (proc (X p))))
+;;                        (put-def (defs) (X p) (proc (X p))))
 ;;                       μ Conf) (μ Conf))
 
 ;; (judgment-holds (rcp→ (conf N-ex-7-13 (cstore) D-ex-7-13) μ Conf) (μ Conf))
