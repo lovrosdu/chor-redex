@@ -397,13 +397,13 @@
   #:mode (sp→ I O O)
   #:contract (sp→ N μ N)
   [(commute N (net (p (proc (q !) I_1 ...)) (q (proc (p ?) I_2 ...))))
-   ---------------------------------------------------------------------- com
+   ------------------------------------------------------------------- com
    (sp→ N (p → q) (make-net (p (proc I_1 ...)) (q (proc I_2 ...))))]
   [(split N M_1 M_2)
    (where (net _ _ ...) M_1)
    (where (net _ _ ...) M_2)
    (sp→ M_1 μ M_3)
-   --------------------------- par
+   ------------------------- par
    (sp→ N μ (join M_2 M_3))])
 
 (define-term N3-1
@@ -461,18 +461,18 @@
   #:mode (st→ I O O)
   #:contract (st→ Conf μ Conf)
   [(↓ (get-pstore Σ p) e v)
-   ------------------------------------------- local
+   ----------------------------------------------- local
    (st→ (conf (chor (p x := e) I ...) Σ)
         (τ @ p)
         (conf (chor I ...) (put-var Σ (p (x v)))))]
   [(↓ (get-pstore Σ p) e v)
-   ------------------------------------------- com
+   ----------------------------------------------- com
    (st→ (conf (chor (p e → q x) I ...) Σ)
         (p v → q)
         (conf (chor I ...) (put-var Σ (q (x v)))))]
   [(st→ (conf (chor I_1 ...) Σ_1) μ (conf (chor I_2 ...) Σ_2))
    (side-condition ,(apply set-disjoint? (term ((pn I) (pn μ)))))
-   ------------------------------------------------------------------------ delay
+   --------------------------------------------------------------- delay
    (st→ (conf (chor I I_1 ...) Σ_1) μ (conf (chor I I_2 ...) Σ_2))])
 
 (define (catalogue title)
@@ -530,23 +530,22 @@
   #:mode (stp→ I O O)
   #:contract (stp→ Conf μ Conf)
   [(↓ (get-pstore Σ p) e v)
-   ------------------------------------------------------ local
+   ---------------------------------------------------------- local
    (stp→ (conf (net (p (proc (x := e) I ...))) Σ)
          (τ @ p)
          (conf (net (p (proc I ...))) (put-var Σ (p (x v)))))]
   [(commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
    (↓ (get-pstore Σ p) e v)
-   ---------------------------------------------------------------------------- com
+   ----------------------------------------------------------------------- com
    (stp→ (conf N Σ)
          (p v → q)
-         (conf
-          (make-net (p (proc I_1 ...)) (q (proc I_2 ...)))
-          (put-var Σ (q (x v)))))]
+         (conf (make-net (p (proc I_1 ...)) (q (proc I_2 ...)))
+               (put-var Σ (q (x v)))))]
   [(split N M_1 M_2)
    (where (net _ _ ...) M_1)
    (where (net _ _ ...) M_2)
    (stp→ (conf M_1 Σ_1) μ (conf M_3 Σ_2))
-   --------------------------------------------------- par
+   ----------------------------------------------- par
    (stp→ (conf N Σ_1) μ (conf (join M_2 M_3) Σ_2))])
 
 ;; (judgment-holds (stp→ (conf (make-net (p (proc (x := 6)))) (cstore)) μ Conf) (μ Conf))
@@ -605,14 +604,10 @@
    (cc→ (conf (chor (if (p e) C_1 (chor I_2 ...)) I ...) Σ)
         (τ @ p)
         (conf (chor I_2 ... I ...) Σ))]
-  [(cc→ (conf (chor I_1 ...) Σ_1) μ (conf (chor I_2 ...) Σ_2))
-   (side-condition ,(apply set-disjoint? (term ((pn I) (pn μ)))))
-   ------------------------------------------------------------------------ delay
-   (cc→ (conf (chor I I_1 ...) Σ_1) μ (conf (chor I I_2 ...) Σ_2))]
   [(cc→ (conf C_1 Σ_1) μ (conf C_2 Σ_2))
    (cc→ (conf C_3 Σ_1) μ (conf C_4 Σ_2))
    (side-condition ,(apply set-disjoint? (term ((p) (pn μ)))))
-   ---------------------------------------------------------------- delay-cond
+   ----------------------------------------------------------- delay-cond
    (cc→ (conf (chor (if (p e) C_1 C_3) I ...) Σ_1)
         μ
         (conf (chor (if (p e) C_2 C_4) I ...) Σ_2))])
@@ -650,14 +645,6 @@
 (define-overriding-judgment-form ConditionalProc stp→
   #:mode (cp→ I O O)
   #:contract (cp→ Conf μ Conf)
-  [(commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
-   (↓ (get-pstore Σ p) e v)
-   -------------------------------------------------------------------------- com
-   (cp→ (conf N Σ)
-        (p v → q)
-        (conf
-         (make-net (p (proc I_1 ...)) (q (proc I_2 ...)))
-         (put-var Σ (q (x v)))))]
   [(↓ (get-pstore Σ p) e #t)
    ------------------------------------------------------------ cond-then
    (cp→ (conf (net (p (proc (if e (proc I_1 ...) P) I ...))) Σ)
@@ -667,13 +654,7 @@
    ------------------------------------------------------------ cond-else
    (cp→ (conf (net (p (proc (if e P (proc I_1 ...)) I ...))) Σ)
         (τ @ p)
-        (conf (net (p (proc I_1 ... I ...))) Σ))]
-  [(split N M_1 M_2)
-   (where (net _ _ ...) M_1)
-   (where (net _ _ ...) M_2)
-   (cp→ (conf M_1 Σ_1) μ (conf M_3 Σ_2))
-   ------------------------------------------------- par
-   (cp→ (conf N Σ_1) μ (conf (join M_2 M_3) Σ_2))])
+        (conf (net (p (proc I_1 ... I ...))) Σ))])
 
 (define-term N-ex-6-7
   (make-net (p (proc (if (< x 10)
@@ -717,18 +698,7 @@
   [-------------------------------------- sel
    (sl→ (conf (chor (p → q [l]) I ...) Σ)
         (p → q [l])
-        (conf (chor I ...) Σ))]
-  [(sl→ (conf (chor I_1 ...) Σ_1) μ (conf (chor I_2 ...) Σ_2))
-   (side-condition ,(apply set-disjoint? (term ((pn I) (pn μ)))))
-   ------------------------------------------------------------------------ delay
-   (sl→ (conf (chor I I_1 ...) Σ_1) μ (conf (chor I I_2 ...) Σ_2))]
-  [(sl→ (conf C_1 Σ_1) μ (conf C_2 Σ_2))
-   (sl→ (conf C_3 Σ_1) μ (conf C_4 Σ_2))
-   (side-condition ,(apply set-disjoint? (term ((p) (pn μ)))))
-   ---------------------------------------------------------------- delay-cond
-   (sl→ (conf (chor (if (p e) C_1 C_3) I ...) Σ_1)
-        μ
-        (conf (chor (if (p e) C_2 C_4) I ...) Σ_2))])
+        (conf (chor I ...) Σ))])
 
 (define (timestamp)
   (date->string (current-date)))
@@ -790,23 +760,10 @@
   [(commute N (net (p (proc (q ⊕ l) I_1 ...))
                    (q (proc (p & (l_1 P_1) ...) I_2 ...))))
    (where (_ ... (l (proc I_3 ...)) _ ...) ((l_1 P_1) ...))
-   ------------------------------------------------------------------- sel
+   ------------------------------------------------------------------------ sel
    (slp→ (conf N Σ)
          (p → q [l])
-         (conf (make-net (p (proc I_1 ...)) (q (proc I_3 ... I_2 ...))) Σ))]
-  [(commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
-   (↓ (get-pstore Σ p) e v)
-   ---------------------------------------------------------------------------- com
-   (slp→ (conf N Σ)
-         (p v → q)
-         (conf (make-net (p (proc I_1 ...)) (q (proc I_2 ...)))
-               (put-var Σ (q (x v)))))]
-  [(split N M_1 M_2)
-   (where (net _ _ ...) M_1)
-   (where (net _ _ ...) M_2)
-   (slp→ (conf M_1 Σ_1) μ (conf M_3 Σ_2))
-   --------------------------------------------------- par
-   (slp→ (conf N Σ_1) μ (conf (join M_2 M_3) Σ_2))])
+         (conf (make-net (p (proc I_1 ...)) (q (proc I_3 ... I_2 ...))) Σ))])
 
 (define (valid-creds? creds)
   (equal? creds "secret"))
@@ -866,12 +823,12 @@
   #:mode (rc→ I O O)
   #:contract (rc→ Conf μ Conf)
   [(↓ (get-pstore Σ p) e v)
-   --------------------------------------------- local
+   ------------------------------------------------- local
    (rc→ (conf (chor (p x := e) I ...) Σ D)
         (τ @ p)
         (conf (chor I ...) (put-var Σ (p (x v))) D))]
   [(↓ (get-pstore Σ p) e v)
-   --------------------------------------------- com
+   ------------------------------------------------- com
    (rc→ (conf (chor (p e → q x) I ...) Σ D)
         (p v → q)
         (conf (chor I ...) (put-var Σ (q (x v))) D))]
@@ -885,7 +842,7 @@
         (τ @ p)
         (conf (chor I_1 ... I ...) Σ D))]
   [(↓ (get-pstore Σ p) e #f)
-   ----------------------------------------------------------- cond-else
+   ---------------------------------------------------------- cond-else
    (rc→ (conf (chor (if (p e) C_1 (chor I_2 ...)) I ...) Σ D)
         (τ @ p)
         (conf (chor I_2 ... I ...) Σ D))]
@@ -910,12 +867,12 @@
         (conf (chor I ...) Σ D))]
   [(rc→ (conf (chor I_1 ...) Σ_1 D) μ (conf (chor I_2 ...) Σ_2 D))
    (side-condition ,(apply set-disjoint? (term ((pn I) (pn μ)))))
-   ------------------------------------------------------------------------ delay
+   ------------------------------------------------------------------- delay
    (rc→ (conf (chor I I_1 ...) Σ_1 D) μ (conf (chor I I_2 ...) Σ_2 D))]
   [(rc→ (conf C_1 Σ_1 D) μ (conf C_2 Σ_2 D))
    (rc→ (conf C_3 Σ_1 D) μ (conf C_4 Σ_2 D))
    (side-condition ,(apply set-disjoint? (term ((p) (pn μ)))))
-   ---------------------------------------------------------------- delay-cond
+   ----------------------------------------------------------- delay-cond
    (rc→ (conf (chor (if (p e) C_1 C_3) I ...) Σ_1 D)
         μ
         (conf (chor (if (p e) C_2 C_4) I ...) Σ_2 D))])
@@ -1053,24 +1010,21 @@
 (define-overriding-judgment-form RecursiveProc slp→
   #:mode (rcp→ I O O)
   #:contract (rcp→ Conf μ Conf)
-  ;; [(slp→ (conf N_1 Σ_1) μ (conf N_2 Σ_2))
-  ;;  ------------------------------------------ inherit
-  ;;  (rcp→ (conf N_1 Σ_1 D) μ (conf N_2 Σ_2 D))]
   [(↓ (get-pstore Σ p) e v)
-   -------------------------------------------------------- local
+   ------------------------------------------------------------ local
    (rcp→ (conf (net (p (proc (x := e) I ...))) Σ D)
          (τ @ p)
          (conf (net (p (proc I ...))) (put-var Σ (p (x v))) D))]
   [(commute N (net (p (proc (q ⊕ l) I_1 ...))
                    (q (proc (p & (l_1 P_1) ...) I_2 ...))))
    (where (_ ... (l (proc I_3 ...)) _ ...) ((l_1 P_1) ...))
-   --------------------------------------------------------------------- sel
+   -------------------------------------------------------------------------- sel
    (rcp→ (conf N Σ D)
          (p → q [l])
          (conf (make-net (p (proc I_1 ...)) (q (proc I_3 ... I_2 ...))) Σ D))]
   [(commute N (net (p (proc (q ! e) I_1 ...)) (q (proc (p ? x) I_2 ...))))
    (↓ (get-pstore Σ p) e v)
-   ---------------------------------------------------------------------------- com
+   ----------------------------------------------------------------------- com
    (rcp→ (conf N Σ D)
          (p v → q)
          (conf (make-net (p (proc I_1 ...)) (q (proc I_2 ...)))
@@ -1087,7 +1041,7 @@
          (τ @ p)
          (conf (net (p (proc I_1 ... I ...))) Σ D))]
   [(where ((r ...) (proc I_1 ...)) (get-def D X))
-   ------------------------------------------------------------------------ call
+   ------------------------------------------------------------------ call
    (rcp→ (conf (net (p (proc (X q ...) I ...))) Σ D)
          (τ @ p)
          (conf (net (p (proc (subst I_1 (r q) ...) ... I ...))) Σ D))]
@@ -1095,7 +1049,7 @@
    (where (net _ _ ...) M_1)
    (where (net _ _ ...) M_2)
    (rcp→ (conf M_1 Σ_1 D) μ (conf M_3 Σ_2 D))
-   ------------------------------------------------------- par
+   --------------------------------------------------- par
    (rcp→ (conf N Σ_1 D) μ (conf (join M_2 M_3) Σ_2 D))])
 
 (define-term D-ex-7-13
