@@ -1118,3 +1118,45 @@
 
 ;; (traces ChoiceChor-> (term (conf C-10-5 (cstore) (defs))))
 ;; (show-derivations (build-derivations (chc→ (conf C-10-5 (cstore) (defs)) μ Conf)))
+
+;;; Paxos
+
+(define-term paxos
+  (conf (chor (paxos p a_1 a_2 a_3))
+        (make-cstore
+         (p ((highest-n -1)))
+         (a_1 ((promised-n -1) (accepted-n -1) (accepted-val #f)))
+         (a_2 ((promised-n -1) (accepted-n -1) (accepted-val #f)))
+         (a_3 ((promised-n -1) (accepted-n -1) (accepted-val #f))))
+        (make-defs
+         ((paxos p a_1 a_2 a_3)
+          (chor (p highest-n := (make-id highest-n))
+                (| (p (make-prepare highest-n) → a_1 m)
+                   (p (make-prepare highest-n) → a_2 m)
+                   (p (make-prepare highest-n) → a_3 m))
+                (| (process p a_1)
+                   (process p a_2)
+                   (process p a_3))))
+         ((process p a)
+          (chor (match a.m
+                  [`(prepare-req ,a.n)
+                   (cond
+                     [(< a.n a.promised-n)
+                      (a (make-reject1 a.n) → p m)
+                      ...]
+                     [(> a.accepted-n -1)
+                      (a promised-n := a.n)
+                      (a (make-promise1 a.n a.accepted-n a.accepted-val) → p m)
+                      ...]
+                     [else
+                      (a promised-n := a.n)
+                      (a (make-promise2 a.n) → p m)
+                      ...])]
+                  [`(accept-req ,a.n ,a.val)
+                   (cond
+                     [(< a.n a.promised-n)
+                      (a (make-reject2 a.n) → p m)]
+                     [else
+                      (a (make-accepted a.n a.val))
+                      (a accepted-n := n)
+                      (a accepted-val := val)])]))))))
