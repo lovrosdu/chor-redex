@@ -1119,44 +1119,66 @@
 ;; (traces ChoiceChor-> (term (conf C-10-5 (cstore) (defs))))
 ;; (show-derivations (build-derivations (chc→ (conf C-10-5 (cstore) (defs)) μ Conf)))
 
-;;; Paxos
+;;; * Paxos
+
+;;; ** TODO
+;;;
+;;; - For now, we hardcode the number of participants.
+;;;
+;;; - For now, we use #f instead of options types.
+;;;
+;;; - For now, we pretend that choreographic procedures can take non-role
+;;;   arguments (`mi' in do-round below, which is a variable reference).
+;;;
+;;; - For now, we pretend that we have `match', buffers, `insert!', etc. to
+;;;   simplify the implementation.
 
 (define-term paxos
-  (conf (chor (paxos p a_1 a_2 a_3))
+  (conf (chor (paxos p a1 a2 a3))
         (make-cstore
-         (p ((highest-n -1)))
-         (a_1 ((promised-n -1) (accepted-n -1) (accepted-val #f)))
-         (a_2 ((promised-n -1) (accepted-n -1) (accepted-val #f)))
-         (a_3 ((promised-n -1) (accepted-n -1) (accepted-val #f))))
+         (p ((last-n #f) (promise-buffer '()) (reject-buffer '())))
+         (a1 ((promised-n #f) (accepted-n #f) (accepted-val #f) (next-msg #f)))
+         (a2 ((promised-n #f) (accepted-n #f) (accepted-val #f) (next-msg #f)))
+         (a3 ((promised-n #f) (accepted-n #f) (accepted-val #f) (next-msg #f))))
         (make-defs
-         ((paxos p a_1 a_2 a_3)
-          (chor (p highest-n := (make-id highest-n))
-                (| (p (make-prepare highest-n) → a_1 m)
-                   (p (make-prepare highest-n) → a_2 m)
-                   (p (make-prepare highest-n) → a_3 m))
-                (| (process p a_1)
-                   (process p a_2)
-                   (process p a_3))))
-         ((process p a)
+         ((paxos p a1 a2 a3)
+          (chor
+           ;; Propose
+           (p last-n := (make-id last-n))
+           (multi (p (make-prepare last-n) → a1 m)
+                  (p (make-prepare last-n) → a2 m)
+                  (p (make-prepare last-n) → a3 m))
+           (do-round p a1 m1)
+           (do-round p a2 m2)
+           (do-round p a3 m3)))
+         ((do-round p a mi)
           (chor (match a.m
-                  [`(prepare-req ,a.n)
+                  [`(prepare ,a.n)
                    (cond
                      [(< a.n a.promised-n)
-                      (a (make-reject1 a.n) → p m)
-                      ...]
-                     [(> a.accepted-n -1)
-                      (a promised-n := a.n)
-                      (a (make-promise1 a.n a.accepted-n a.accepted-val) → p m)
-                      ...]
+                      (a next-msg := (make-reject-prepare a.n))]
+                     [a.accepted-n
+                      (a next-msg := (make-promise a.n (list a.accepted-n a.accepted-val)))
+                      (a promised-n := a.n)]
                      [else
-                      (a promised-n := a.n)
-                      (a (make-promise2 a.n) → p m)
-                      ...])]
-                  [`(accept-req ,a.n ,a.val)
+                      (a next-msg := (make-promise a.n #f))
+                      (a promised-n := a.n)])]
+                  [`(accept-request ,a.n ,a.val)
                    (cond
                      [(< a.n a.promised-n)
-                      (a (make-reject2 a.n) → p m)]
+                      (a next-msg := (make-reject-accept-request a.n))]
                      [else
-                      (a (make-accepted a.n a.val))
+                      (a next-msg := (make-accepted a.n a.val))
                       (a accepted-n := n)
-                      (a accepted-val := val)])]))))))
+                      (a accepted-val := val)])])
+                (a next-msg → p mi)
+                (match p.mi
+                  [`(,(or 'reject-prepare 'reject-accept-request) ,p.n)
+                   (insert! reject-buffer (list a p.n))]
+                  [`(promise ,p.n (,p.accepted-n ,p.accepted-val))
+                   (insert! promise-buffer (list a p.n))]
+                  [`(promise #f)
+                   (insert! promise-buffer (list a p.n))]
+                  [`(accept ,p.n ,p.val)
+                   ;; Yay!
+                   ]))))))
