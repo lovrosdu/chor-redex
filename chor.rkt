@@ -114,7 +114,7 @@
 ;;; ** Process Names
 
 (define-metafunction Util
-  pn : any -> (any ...)
+  pn : any -> (p ...)
   ;; Simple
   [(pn (p → q)) (p q)]
   ;; Stateful
@@ -123,15 +123,14 @@
   [(pn (p v → q)) (p q)]
   [(pn (τ @ p)) (p)]
   ;; Conditional
-  [(pn (if (p e) C_1 C_2))
-   ,(apply set-union (term ((p) (pn C_1) (pn C_2))))]
+  [(pn (if (p e) C_1 C_2)) ,(apply set-union (term ((p) (pn C_1) (pn C_2))))]
   ;; Selective
   [(pn (p → q [l])) (p q)]
   ;; Recursive
   [(pn (X p ...)) (p ...)]
   [(pn (enter (q ...) _ _)) (q ...)]
   ;; A whole choreography
-  [(pn (chor I ...)) ((pn I) ...)])
+  [(pn (chor I ...)) ,(apply set-union (term ((pn I) ...)))])
 
 ;;; ** Transition Formatting
 
@@ -281,8 +280,6 @@
   [(subst (p & (l (proc I ...)) ...) (p_1 q_1) ...)
    ((subst-p p (p_1 q_1) ...) & (l (proc (subst I (p_1 q_1)) ...)) ...)]
   ;; Recursive
-  [(subst (X p ...) (p_1 q_1) ...)
-   (X (subst-p p (p_1 q_1) ...) ...)]
   [(subst (X p ...) (p_1 q_1) ...)
    (X (subst-p p (p_1 q_1) ...) ...)])
 
